@@ -1,0 +1,26 @@
+# Dépendances
+node_modules/
+
+# Builds
+dist/
+frontend/src-tauri/target/
+frontend/.vite/
+backend/dist/
+coverage/
+backups/
+frontend/test-results/
+frontend/playwright-report/
+
+# Environnement
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Divers
+.DS_Store
+Thumbs.db
+*.local

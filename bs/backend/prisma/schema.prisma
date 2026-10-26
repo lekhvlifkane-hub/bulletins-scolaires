@@ -1,0 +1,641 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PLATFORM_ADMIN
+  SCHOOL_ADMIN
+  SURVEILLANT_GENERAL
+  ASSISTANT
+}
+
+enum AcademicYearStatus {
+  PREPARATION
+  ACTIVE
+  CLOSED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  TRANSFERRED
+  LEFT
+  ARCHIVED
+}
+
+/// Catégorie d'évaluation : entre dans la formule de la moyenne de matière selon les poids de l'établissement.
+enum EvaluationCategory {
+  DEVOIR
+  COMPOSITION
+  AUTRE
+}
+
+/// Workflow d'une évaluation : brouillon → saisie → à vérifier → validée → publiée.
+enum AssessmentStatus {
+  BOUILLON
+  SAISIE_EN_COURS
+  A_VERIFIER
+  VALIDEE
+  PUBLIEE
+}
+
+/// Cycle de vie d'un e-mail mis en file d'attente.
+enum EmailStatus {
+  EN_ATTENTE
+  ENVOYE
+  ECHEC
+}
+
+/// Statut d'une note. Un 0 n'est une note valide que si status = SAISIE.
+enum GradeStatus {
+  SAISIE
+  ABSENT
+  ANNULEE
+  NON_SAISIE
+}
+
+/// Statut d'un bulletin (phase 5). Un bulletin PUBLIE est figé : sa correction
+/// passe par une nouvelle version, l'ancienne restant conservée.
+enum ReportCardStatus {
+  BOUILLON
+  PRET
+  PUBLIE
+  ANNULE
+}
+
+enum AttendanceKind {
+  ABSENCE
+  RETARD
+}
+
+enum CouncilDecisionStatus {
+  BROUILLON
+  VALIDEE
+}
+
+// Métadonnées techniques de la base (version de schéma, informations de déploiement).
+model AppMeta {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model School {
+  id                  String  @id @default(cuid())
+  name                String
+  officialName        String?
+  city                String?
+  address             String?
+  phone               String?
+  email               String?
+  accreditationNumber String?
+  isActive            Boolean @default(true)
+
+  // Règles de calcul de l'établissement (defaults = valeurs à valider, voir docs/A_VALIDER.md)
+  regleCalculMatiere         String  @default("POIDS_GROUPES")
+  poidsDevoirs               Decimal @default(1) @db.Decimal(5, 2)
+  poidsCompositions          Decimal @default(1) @db.Decimal(5, 2)
+  poidsAutres                Decimal @default(0) @db.Decimal(5, 2)
+  absencesComptentZero       Boolean @default(false)
+  groupeSansNote             String  @default("EXCLURE")
+  coefficientInvalide        String  @default("EXCLURE")
+  baremeParDefaut            Decimal @default(20) @db.Decimal(5, 2)
+  arrondiDecimales           Int     @default(2)
+  arrondiMode                String  @default("HALF_UP")
+  rangMode                   String  @default("STANDARD")
+  classerResultatsIncomplets Boolean @default(false)
+  poidsSemestre1             Decimal @default(1) @db.Decimal(5, 2)
+  poidsSemestre2             Decimal @default(1) @db.Decimal(5, 2)
+  annuelSiSemestreManquant   String  @default("NULL")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users               User[]
+  auditLogs           AuditLog[]
+  emails              EmailOutbox[]
+  temporaryAccess     TemporaryAccessGrant[]
+  passwordResetTokens PasswordResetToken[]
+  academicYears       AcademicYear[]
+  levels              Level[]
+  series              Series[]
+  classrooms          Classroom[]
+  students            Student[]
+  subjects            Subject[]
+  attendanceRecords   AttendanceRecord[]
+  appreciations       Appreciation[]
+  councilDecisions    CouncilDecision[]
+
+  @@index([deletedAt])
+}
+
+model AcademicYear {
+  id               String             @id @default(cuid())
+  schoolId         String
+  school           School             @relation(fields: [schoolId], references: [id])
+  name             String
+  startsAt         DateTime
+  endsAt           DateTime
+  status           AcademicYearStatus @default(PREPARATION)
+  deletedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  semesters        Semester[]
+  classrooms       Classroom[]
+  reportCards      ReportCard[]
+  annualSummaries  AnnualSummary[]
+  councilDecisions CouncilDecision[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, status])
+}
+
+model Semester {
+  id                String             @id @default(cuid())
+  academicYearId    String
+  academicYear      AcademicYear       @relation(fields: [academicYearId], references: [id])
+  number            Int
+  name              String
+  startsAt          DateTime
+  endsAt            DateTime
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  assessments       Assessment[]
+  reportCards       ReportCard[]
+  attendanceRecords AttendanceRecord[]
+  appreciations     Appreciation[]
+
+  @@unique([academicYearId, number])
+}
+
+model Level {
+  id         String      @id @default(cuid())
+  schoolId   String
+  school     School      @relation(fields: [schoolId], references: [id])
+  name       String
+  sortOrder  Int         @default(0)
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
+  series     Series[]
+  classrooms Classroom[]
+
+  @@unique([schoolId, name])
+}
+
+model Series {
+  id         String      @id @default(cuid())
+  schoolId   String
+  school     School      @relation(fields: [schoolId], references: [id])
+  levelId    String?
+  level      Level?      @relation(fields: [levelId], references: [id])
+  name       String
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
+  classrooms Classroom[]
+
+  @@unique([schoolId, levelId, name])
+}
+
+model Classroom {
+  id             String             @id @default(cuid())
+  schoolId       String
+  school         School             @relation(fields: [schoolId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id])
+  levelId        String
+  level          Level              @relation(fields: [levelId], references: [id])
+  seriesId       String?
+  series         Series?            @relation(fields: [seriesId], references: [id])
+  name           String
+  deletedAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  enrollments    Enrollment[]
+  subjects       ClassroomSubject[]
+
+  @@unique([schoolId, academicYearId, name])
+  @@index([schoolId, academicYearId])
+}
+
+model Student {
+  id            String       @id @default(cuid())
+  schoolId      String
+  school        School       @relation(fields: [schoolId], references: [id])
+  matricule     String
+  lastName      String
+  firstNames    String
+  birthDate     DateTime?
+  birthPlace    String?
+  sex           String?
+  address       String?
+  guardianName  String?
+  guardianPhone String?
+  deletedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  enrollments   Enrollment[]
+
+  @@unique([schoolId, matricule])
+  @@index([schoolId, lastName, firstNames])
+}
+
+model Enrollment {
+  id                String             @id @default(cuid())
+  schoolId          String
+  studentId         String
+  student           Student            @relation(fields: [studentId], references: [id])
+  classroomId       String
+  classroom         Classroom          @relation(fields: [classroomId], references: [id])
+  status            EnrollmentStatus   @default(ACTIVE)
+  enrolledAt        DateTime           @default(now())
+  endedAt           DateTime?
+  deletedAt         DateTime?
+  grades            Grade[]
+  reportCards       ReportCard[]
+  annualSummaries   AnnualSummary[]
+  attendanceRecords AttendanceRecord[]
+  appreciations     Appreciation[]
+  councilDecisions  CouncilDecision[]
+
+  @@index([schoolId, studentId])
+  @@index([schoolId, classroomId, status])
+}
+
+model Subject {
+  id            String             @id @default(cuid())
+  schoolId      String
+  school        School             @relation(fields: [schoolId], references: [id])
+  name          String
+  code          String
+  deletedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  classrooms    ClassroomSubject[]
+  appreciations Appreciation[]
+
+  @@unique([schoolId, code])
+}
+
+model ClassroomSubject {
+  id            String       @id @default(cuid())
+  schoolId      String
+  classroomId   String
+  classroom     Classroom    @relation(fields: [classroomId], references: [id])
+  subjectId     String
+  subject       Subject      @relation(fields: [subjectId], references: [id])
+  coefficient   Decimal      @db.Decimal(6, 2)
+  effectiveFrom DateTime     @default(now())
+  effectiveTo   DateTime?
+  assessments   Assessment[]
+
+  @@index([schoolId, classroomId])
+  @@index([schoolId, subjectId])
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  schoolId            String?
+  school              School?   @relation(fields: [schoolId], references: [id])
+  name                String
+  email               String    @unique
+  passwordHash        String
+  role                Role
+  isActive            Boolean   @default(true)
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  auditLogs              AuditLog[]             @relation("AuditActor")
+  passwordResetTokens    PasswordResetToken[]
+  grantedAccess          TemporaryAccessGrant[] @relation("GrantedBy")
+  platformAccessGrants   TemporaryAccessGrant[] @relation("PlatformAdmin")
+  bulletinsGeneres       ReportCard[]           @relation("BulletinAuteur")
+  bulletinsPublies       ReportCard[]           @relation("BulletinPublieur")
+  attendanceRecords      AttendanceRecord[]     @relation("AttendanceRecorder")
+  appreciationsCreees    Appreciation[]         @relation("AppreciationCreator")
+  appreciationsModifiees Appreciation[]         @relation("AppreciationUpdater")
+  decisionsValidees      CouncilDecision[]      @relation("CouncilDecisionValidator")
+
+  @@index([schoolId, role])
+  @@index([deletedAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  schoolId  String?
+  school    School?   @relation(fields: [schoolId], references: [id])
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model TemporaryAccessGrant {
+  id              String    @id @default(cuid())
+  schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id])
+  platformAdminId String
+  platformAdmin   User      @relation("PlatformAdmin", fields: [platformAdminId], references: [id])
+  grantedById     String
+  grantedBy       User      @relation("GrantedBy", fields: [grantedById], references: [id])
+  reason          String
+  startsAt        DateTime  @default(now())
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([schoolId, expiresAt])
+  @@index([platformAdminId])
+}
+
+/// E-mail mis en file d'attente puis envoyé par le fournisseur SMTP configuré.
+/// La file est durable : un envoi échoué est relancé au lieu d'être perdu.
+model EmailOutbox {
+  id            String      @id @default(cuid())
+  schoolId      String?
+  school        School?     @relation(fields: [schoolId], references: [id])
+  to            String
+  subject       String
+  bodyText      String
+  status        EmailStatus @default(EN_ATTENTE)
+  attempts      Int         @default(0)
+  lastError     String?
+  nextAttemptAt DateTime    @default(now())
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([schoolId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  schoolId   String?
+  school     School?  @relation(fields: [schoolId], references: [id])
+  userId     String?
+  user       User?    @relation("AuditActor", fields: [userId], references: [id])
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Type d'évaluation configurable par établissement (devoir, composition, interrogation…).
+model AssessmentType {
+  id           String             @id @default(cuid())
+  schoolId     String
+  code         String
+  name         String
+  category     EvaluationCategory
+  defaultOutOf Decimal            @default(20) @db.Decimal(5, 2)
+  actif        Boolean            @default(true)
+  deletedAt    DateTime?
+  createdAt    DateTime           @default(now())
+  assessments  Assessment[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, category])
+}
+
+/// Évaluation rattachée à un couple classe/discipline pour un semestre donné.
+/// L'unicité (établissement, classe+discipline, semestre, type, position) empêche le doublon.
+model Assessment {
+  id                 String           @id @default(cuid())
+  schoolId           String
+  classroomSubjectId String
+  classroomSubject   ClassroomSubject @relation(fields: [classroomSubjectId], references: [id])
+  semesterId         String
+  semester           Semester         @relation(fields: [semesterId], references: [id])
+  typeId             String
+  type               AssessmentType   @relation(fields: [typeId], references: [id])
+  title              String
+  position           Int              @default(1)
+  outOf              Decimal          @default(20) @db.Decimal(5, 2)
+  status             AssessmentStatus @default(BOUILLON)
+  date               DateTime?
+  validatedAt        DateTime?
+  publishedAt        DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  grades             Grade[]
+
+  @@unique([schoolId, classroomSubjectId, semesterId, typeId, position])
+  @@index([schoolId, semesterId])
+  @@index([schoolId, status])
+}
+
+/// Note. `enrollmentId` et non `studentId` : l'historique d'inscription est conservé.
+model Grade {
+  id           String      @id @default(cuid())
+  schoolId     String
+  assessmentId String
+  assessment   Assessment  @relation(fields: [assessmentId], references: [id])
+  enrollmentId String
+  enrollment   Enrollment  @relation(fields: [enrollmentId], references: [id])
+  score        Decimal?    @db.Decimal(5, 2)
+  status       GradeStatus @default(NON_SAISIE)
+  observation  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([assessmentId, enrollmentId])
+  @@index([schoolId, enrollmentId])
+  @@index([schoolId, assessmentId])
+  @@index([schoolId, deletedAt])
+}
+
+model AttendanceRecord {
+  id              String         @id @default(cuid())
+  schoolId        String
+  school          School         @relation(fields: [schoolId], references: [id])
+  enrollmentId    String
+  enrollment      Enrollment     @relation(fields: [enrollmentId], references: [id])
+  semesterId      String
+  semester        Semester       @relation(fields: [semesterId], references: [id])
+  kind            AttendanceKind
+  date            DateTime       @db.Date
+  justified       Boolean        @default(false)
+  durationMinutes Int?
+  reason          String?
+  recordedById    String?
+  recordedBy      User?          @relation("AttendanceRecorder", fields: [recordedById], references: [id])
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([schoolId, enrollmentId, semesterId, deletedAt])
+  @@index([schoolId, semesterId, date])
+}
+
+model Appreciation {
+  id           String     @id @default(cuid())
+  schoolId     String
+  school       School     @relation(fields: [schoolId], references: [id])
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id])
+  semesterId   String
+  semester     Semester   @relation(fields: [semesterId], references: [id])
+  subjectId    String
+  subject      Subject    @relation(fields: [subjectId], references: [id])
+  content      String
+  createdById  String?
+  createdBy    User?      @relation("AppreciationCreator", fields: [createdById], references: [id])
+  updatedById  String?
+  updatedBy    User?      @relation("AppreciationUpdater", fields: [updatedById], references: [id])
+  deletedAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, semesterId, subjectId])
+  @@index([schoolId, enrollmentId, semesterId, deletedAt])
+}
+
+model CouncilDecision {
+  id                 String                @id @default(cuid())
+  schoolId           String
+  school             School                @relation(fields: [schoolId], references: [id])
+  enrollmentId       String
+  enrollment         Enrollment            @relation(fields: [enrollmentId], references: [id])
+  academicYearId     String
+  academicYear       AcademicYear          @relation(fields: [academicYearId], references: [id])
+  version            Int                   @default(1)
+  status             CouncilDecisionStatus @default(BROUILLON)
+  isCurrent          Boolean               @default(true)
+  content            String
+  previousDecisionId String?
+  previousDecision   CouncilDecision?      @relation("CouncilDecisionHistory", fields: [previousDecisionId], references: [id])
+  nextDecisions      CouncilDecision[]     @relation("CouncilDecisionHistory")
+  validatedAt        DateTime?
+  validatedById      String?
+  validatedBy        User?                 @relation("CouncilDecisionValidator", fields: [validatedById], references: [id])
+  deletedAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@unique([enrollmentId, academicYearId, version])
+  @@index([schoolId, academicYearId, status, isCurrent])
+}
+
+/// Bulletin de notes versionné (phase 5).
+/// `snapshot` est la photo figée des données utilisées à la génération : moyennes,
+/// coefficients, notes retenues, paramètres et formules de l'établissement, en-tête.
+/// Un bulletin PUBLIE ne se remanie jamais : une correction crée une `version`
+/// supérieure, l'ancienne restant consultable (`estCourant` = false).
+/// Les colonnes de synthèse recopient le snapshot pour lister/trier sans lire le JSON ;
+/// la source d'affichage reste le snapshot.
+model ReportCard {
+  id                   String           @id @default(cuid())
+  schoolId             String
+  enrollmentId         String
+  enrollment           Enrollment       @relation(fields: [enrollmentId], references: [id])
+  semesterId           String
+  semester             Semester         @relation(fields: [semesterId], references: [id])
+  academicYearId       String
+  academicYear         AcademicYear     @relation(fields: [academicYearId], references: [id])
+  version              Int              @default(1)
+  statut               ReportCardStatus @default(BOUILLON)
+  estCourant           Boolean          @default(true)
+  remplaceReportCardId String?
+  remplaceReportCard   ReportCard?      @relation("BulletinCorrection", fields: [remplaceReportCardId], references: [id])
+  corrigePar           ReportCard[]     @relation("BulletinCorrection")
+  motifCorrection      String?
+  snapshot             Json
+
+  moyenneGenerale       Decimal? @db.Decimal(6, 4)
+  moyenneGeneraleExacte String?
+  moyenneClasse         Decimal? @db.Decimal(6, 4)
+  effectif              Int?
+  rang                  Int?
+  motifNonClasse        String?
+  totalPoints           Decimal? @db.Decimal(10, 4)
+  totalCoeficients      Decimal? @db.Decimal(10, 2)
+  incomplet             Boolean  @default(false)
+  motifs                String[] @default([])
+
+  /// Renseigné par l'établissement : le logiciel n'invente ni mention ni décision.
+  mention         String?
+  decisionConseil String?
+  appreciation    String?
+
+  genereLe    DateTime  @default(now())
+  valideLe    DateTime?
+  publieLe    DateTime?
+  genereParId String?
+  generePar   User?     @relation("BulletinAuteur", fields: [genereParId], references: [id])
+  publieParId String?
+  publiePar   User?     @relation("BulletinPublieur", fields: [publieParId], references: [id])
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([enrollmentId, semesterId, version])
+  @@index([schoolId, semesterId, statut])
+  @@index([schoolId, enrollmentId])
+  @@index([schoolId, academicYearId])
+  @@index([remplaceReportCardId])
+}
+
+/// Bilan annuel d'un élève : S1, S2 et moyenne annuelle selon la règle de l'établissement.
+/// Un semestre manquant rend l'annuelle non calculable (jamais une valeur inventée) ;
+/// le snapshot garde les deux bulletins retenus.
+model AnnualSummary {
+  id             String           @id @default(cuid())
+  schoolId       String
+  enrollmentId   String
+  enrollment     Enrollment       @relation(fields: [enrollmentId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  version        Int              @default(1)
+  statut         ReportCardStatus @default(BOUILLON)
+  estCourant     Boolean          @default(true)
+  snapshot       Json
+
+  s1ReportCardId String?
+  s2ReportCardId String?
+
+  moyenneS1             Decimal? @db.Decimal(6, 4)
+  moyenneS2             Decimal? @db.Decimal(6, 4)
+  moyenneAnnuelle       Decimal? @db.Decimal(6, 4)
+  moyenneAnnuelleExacte String?
+  calculable            Boolean  @default(false)
+  partiel               Boolean  @default(false)
+  rangAnnuel            Int?
+  effectif              Int?
+  motifs                String[] @default([])
+
+  mention         String?
+  decisionConseil String?
+  appreciation    String?
+
+  genereLe  DateTime  @default(now())
+  publieLe  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([enrollmentId, academicYearId, version])
+  @@index([schoolId, academicYearId, statut])
+  @@index([schoolId, enrollmentId])
+}

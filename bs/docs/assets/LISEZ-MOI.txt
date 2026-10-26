@@ -1,0 +1,3 @@
+Place ici AVANT de lancer OpenCode :
+- logo-bulletins-scolaires.png (ou .svg)  -> logo du logiciel
+- exemple-bulletin-1.pdf / .jpg ...       -> exemples de bulletins (type PLANETE Eleve) servant de modele de mise en page

@@ -1,0 +1,32 @@
+import app from './app';
+import { env } from './config/env';
+import { prisma } from './db/prisma';
+import { arreterFileEmails, demarrerFileEmails } from './services/mailer';
+
+async function main(): Promise<void> {
+  await prisma.$connect();
+
+  const server = app.listen(env.PORT, () => {
+    console.log(`API Bulletins Scolaires : http://localhost:${env.PORT}`);
+    console.log(`Documentation OpenAPI : http://localhost:${env.PORT}/api/docs`);
+  });
+
+  demarrerFileEmails();
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`Arrêt demandé (${signal})...`);
+    arreterFileEmails();
+    server.close();
+    await prisma.$disconnect();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+main().catch(async (error) => {
+  console.error('Impossible de démarrer l’API :', error);
+  await prisma.$disconnect();
+  process.exit(1);
+});
