@@ -77,6 +77,12 @@ enum CouncilDecisionStatus {
   VALIDEE
 }
 
+enum SchoolStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
 // Métadonnées techniques de la base (version de schéma, informations de déploiement).
 model AppMeta {
   id        Int      @id @default(autoincrement())
@@ -87,7 +93,7 @@ model AppMeta {
 }
 
 model School {
-  id                  String  @id @default(cuid())
+  id                  String       @id @default(cuid())
   name                String
   officialName        String?
   city                String?
@@ -95,7 +101,8 @@ model School {
   phone               String?
   email               String?
   accreditationNumber String?
-  isActive            Boolean @default(true)
+  status              SchoolStatus @default(ACTIVE)
+  isActive            Boolean      @default(true)
 
   // Règles de calcul de l'établissement (defaults = valeurs à valider, voir docs/A_VALIDER.md)
   regleCalculMatiere         String  @default("POIDS_GROUPES")

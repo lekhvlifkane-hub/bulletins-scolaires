@@ -124,11 +124,14 @@ router.post(
     const invalid = new HttpError(401, 'Adresse e-mail ou mot de passe incorrect');
     const found = await prisma.user.findUnique({ where: { email } });
 
-    if (!found || found.deletedAt || !found.isActive) {
+    // Seuls un compte inconnu ou supprimé restent une erreur générique : l'état
+    // d'un compte existant doit être expliqué plus bas (demande en attente,
+    // établissement désactivé, compte désactivé).
+    if (!found || found.deletedAt) {
       await writeAuditLog({
         req,
         action: 'AUTH_LOGIN_FAILED',
-        metadata: { email, reason: 'unknown_or_inactive' },
+        metadata: { email, reason: 'unknown' },
       });
       throw invalid;
     }
@@ -147,6 +150,26 @@ router.post(
         423,
         'Compte temporairement verrouillé. Veuillez réessayer plus tard.',
       );
+    }
+
+    // L'état de l'établissement passe avant celui du compte : le compte
+    // administrateur d'un établissement en attente est désactivé, et l'intéressé
+    // doit lire « demande en cours de validation », pas « compte désactivé ».
+    if (found.schoolId) {
+      const school = await prisma.school.findUnique({ where: { id: found.schoolId } });
+      if (school && school.status === 'PENDING') {
+        throw new HttpError(403, 'Votre demande est en cours de validation');
+      }
+      if (school && school.status === 'REJECTED') {
+        throw new HttpError(403, 'Votre demande a été refusée');
+      }
+      if (school && !school.isActive) {
+        throw new HttpError(403, 'Établissement désactivé');
+      }
+    }
+
+    if (!found.isActive) {
+      throw new HttpError(403, 'Compte désactivé');
     }
 
     const valid = await verifyPassword(password, found.passwordHash);

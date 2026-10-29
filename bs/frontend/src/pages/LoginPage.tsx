@@ -84,9 +84,12 @@ export function LoginPage() {
             {isSubmitting ? 'Connexion...' : 'Se connecter'}
           </Button>
         </form>
-        <div className="text-center text-sm">
+        <div className="flex flex-col items-center gap-2 text-center text-sm">
           <Link to="/mot-de-passe-oublie" className="underline">
             Mot de passe oublié ?
+          </Link>
+          <Link to="/inscription-etablissement" className="underline">
+            Inscrire mon établissement
           </Link>
         </div>
       </div>

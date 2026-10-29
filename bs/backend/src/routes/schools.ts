@@ -2,11 +2,17 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db/prisma';
 import { asyncHandler, HttpError } from '../lib/http';
+import { hashPassword } from '../lib/password';
 import { publicSchool } from '../lib/serializers';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { requireSchoolScope } from '../middleware/school-scope';
 import { writeAuditLog } from '../services/audit';
 import { requireCsrf } from '../lib/csrf';
+import {
+  sendSchoolRegistrationApprovedEmail,
+  sendSchoolRegistrationReceivedEmail,
+  sendSchoolRegistrationRejectedEmail,
+} from '../services/mailer';
 
 const router = Router();
 
@@ -49,6 +55,69 @@ const schoolSchema = z
   })
   .merge(schoolRulesSchema.partial());
 
+const schoolRegisterSchema = z.object({
+  schoolName: z.string().trim().min(2, "Nom de l'établissement trop court"),
+  city: z.string().trim().min(1, 'Ville requise'),
+  phone: z.string().trim().min(1, 'Téléphone requis'),
+  adminName: z.string().trim().min(2, "Nom de l'administrateur trop court"),
+  adminEmail: z.string().trim().toLowerCase().email('Adresse e-mail invalide'),
+  // Même politique de mot de passe que le reste de l'application (voir auth.ts) :
+  // un administrateur d'établissement n'a pas de règle plus faible que les autres.
+  password: z
+    .string()
+    .min(12, 'Le mot de passe doit contenir au moins 12 caractères')
+    .max(128, 'Le mot de passe ne peut pas dépasser 128 caractères')
+    .regex(/[A-Za-z]/, 'Le mot de passe doit contenir au moins une lettre')
+    .regex(/[0-9]/, 'Le mot de passe doit contenir au moins un chiffre'),
+});
+
+router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const data = schoolRegisterSchema.parse(req.body);
+    const existingUser = await prisma.user.findUnique({ where: { email: data.adminEmail } });
+    if (existingUser) {
+      throw new HttpError(409, 'Cet e-mail est déjà utilisé');
+    }
+    // Hachage scrypt, identique au reste de l'application : `verifyPassword` ne
+    // sait vérifier que ce format. Un autre algorithme rendrait le compte
+    // administrateur définitivement inaccessible après approbation.
+    const passwordHash = await hashPassword(data.password);
+    const result = await prisma.$transaction(async (tx) => {
+      const school = await tx.school.create({
+        data: {
+          name: data.schoolName,
+          city: data.city,
+          phone: data.phone,
+          status: 'PENDING',
+          isActive: false,
+        },
+      });
+      const user = await tx.user.create({
+        data: {
+          schoolId: school.id,
+          name: data.adminName,
+          email: data.adminEmail,
+          passwordHash,
+          role: 'SCHOOL_ADMIN',
+          isActive: false,
+        },
+      });
+      return { school, user };
+    });
+    await sendSchoolRegistrationReceivedEmail(result.user.email, result.school.name);
+    await writeAuditLog({
+      req,
+      schoolId: result.school.id,
+      userId: result.user.id,
+      action: 'SCHOOL_REGISTERED',
+      entityType: 'School',
+      entityId: result.school.id,
+    });
+    res.status(201).json({ message: "Demande d'inscription envoyée" });
+  }),
+);
+
 router.use(requireAuth);
 
 router.get(
@@ -60,6 +129,96 @@ router.get(
       orderBy: { name: 'asc' },
     });
     res.json({ schools: schools.map(publicSchool) });
+  }),
+);
+
+router.get(
+  '/pending',
+  requireRole('PLATFORM_ADMIN'),
+  asyncHandler(async (_req, res) => {
+    const schools = await prisma.school.findMany({
+      where: { deletedAt: null, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const result = await Promise.all(
+      schools.map(async (school) => {
+        const admin = await prisma.user.findFirst({
+          where: { schoolId: school.id, role: 'SCHOOL_ADMIN', deletedAt: null },
+          select: { id: true, name: true, email: true },
+        });
+        return { ...publicSchool(school), admin };
+      }),
+    );
+    res.json({ schools: result });
+  }),
+);
+
+router.post(
+  '/:schoolId/approve',
+  requireRole('PLATFORM_ADMIN'),
+  requireCsrf,
+  asyncHandler(async (req, res) => {
+    const { schoolId } = req.params;
+    const school = await prisma.school.findFirst({ where: { id: schoolId, deletedAt: null } });
+    if (!school) throw new HttpError(404, 'Établissement introuvable');
+    await prisma.$transaction(async (tx) => {
+      await tx.school.update({
+        where: { id: schoolId },
+        data: { status: 'ACTIVE', isActive: true },
+      });
+      await tx.user.updateMany({
+        where: { schoolId, role: 'SCHOOL_ADMIN', deletedAt: null },
+        data: { isActive: true },
+      });
+    });
+    const admin = await prisma.user.findFirst({
+      where: { schoolId, role: 'SCHOOL_ADMIN', deletedAt: null },
+      select: { email: true },
+    });
+    if (admin) {
+      await sendSchoolRegistrationApprovedEmail(admin.email, school.name);
+    }
+    await writeAuditLog({
+      req,
+      userId: req.currentUser!.id,
+      action: 'SCHOOL_APPROVED',
+      entityType: 'School',
+      entityId: schoolId,
+    });
+    res.json({ message: 'Établissement approuvé' });
+  }),
+);
+
+router.post(
+  '/:schoolId/reject',
+  requireRole('PLATFORM_ADMIN'),
+  requireCsrf,
+  asyncHandler(async (req, res) => {
+    const { schoolId } = req.params;
+    const schema = z.object({ reason: z.string().trim().optional() });
+    const { reason } = schema.parse(req.body);
+    const school = await prisma.school.findFirst({ where: { id: schoolId, deletedAt: null } });
+    if (!school) throw new HttpError(404, 'Établissement introuvable');
+    await prisma.school.update({
+      where: { id: schoolId },
+      data: { status: 'REJECTED', isActive: false },
+    });
+    const admin = await prisma.user.findFirst({
+      where: { schoolId, role: 'SCHOOL_ADMIN', deletedAt: null },
+      select: { email: true },
+    });
+    if (admin) {
+      await sendSchoolRegistrationRejectedEmail(admin.email, school.name, reason);
+    }
+    await writeAuditLog({
+      req,
+      userId: req.currentUser!.id,
+      action: 'SCHOOL_REJECTED',
+      entityType: 'School',
+      entityId: schoolId,
+      metadata: { reason },
+    });
+    res.json({ message: 'Établissement refusé' });
   }),
 );
 

@@ -218,3 +218,69 @@ export async function sendInvitationEmail({
   journaliserEnDeveloppement(to, `${lienConnexion()} · identifiant ${to}`);
   await envoyerImmediatement(id);
 }
+
+export async function sendSchoolRegistrationReceivedEmail(
+  to: string,
+  etablissement: string,
+): Promise<void> {
+  const corps = [
+    `Votre demande d'inscription de l'établissement « ${etablissement} » a bien été reçue.`,
+    '',
+    "Elle est en cours d'examen par l'administrateur de la plateforme.",
+    '',
+    'Vous recevrez un e-mail dès qu\'elle aura été approuvée ou refusée.',
+    '',
+    `Adresse de connexion : ${lienConnexion()}`,
+  ].join('\n');
+
+  const id = await mettreEnFileEmail({
+    to,
+    subject: `Demande d'inscription reçue — ${etablissement}`,
+    bodyText: corps,
+  });
+  journaliserEnDeveloppement(to, `Demande d'inscription reçue pour ${etablissement}`);
+  await envoyerImmediatement(id);
+}
+
+export async function sendSchoolRegistrationApprovedEmail(
+  to: string,
+  etablissement: string,
+): Promise<void> {
+  const corps = [
+    `Votre demande d'inscription de l'établissement « ${etablissement} » a été approuvée.`,
+    '',
+    `Vous pouvez maintenant vous connecter à Bulletins Scolaires avec votre compte administrateur.`,
+    '',
+    `Adresse de connexion : ${lienConnexion()}`,
+  ].join('\n');
+
+  const id = await mettreEnFileEmail({
+    to,
+    subject: `Inscription approuvée — ${etablissement}`,
+    bodyText: corps,
+  });
+  journaliserEnDeveloppement(to, `Inscription approuvée pour ${etablissement}`);
+  await envoyerImmediatement(id);
+}
+
+export async function sendSchoolRegistrationRejectedEmail(
+  to: string,
+  etablissement: string,
+  motif?: string,
+): Promise<void> {
+  const corps = [
+    `Votre demande d'inscription de l'établissement « ${etablissement} » a été refusée.`,
+    '',
+    motif ? `Motif : ${motif}` : "Aucun motif n'a été précisé.",
+    '',
+    'Si vous souhaitez plus de précisions, veuillez contacter l\'administrateur de la plateforme.',
+  ].join('\n');
+
+  const id = await mettreEnFileEmail({
+    to,
+    subject: `Inscription refusée — ${etablissement}`,
+    bodyText: corps,
+  });
+  journaliserEnDeveloppement(to, `Inscription refusée pour ${etablissement}${motif ? ` (${motif})` : ''}`);
+  await envoyerImmediatement(id);
+}

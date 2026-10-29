@@ -25,6 +25,8 @@ import { BilanAnnuelPage } from '@/pages/BilanAnnuelPage';
 import { BilanAnnuelDetailPage } from '@/pages/BilanAnnuelDetailPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { VieScolairePage } from '@/pages/VieScolairePage';
+import { SchoolRegistrationPage } from '@/pages/SchoolRegistrationPage';
+import { SchoolsPendingPage } from '@/pages/SchoolsPendingPage';
 
 function App() {
   return (
@@ -32,6 +34,7 @@ function App() {
       <HashRouter>
         <Routes>
           <Route path="/connexion" element={<LoginPage />} />
+          <Route path="/inscription-etablissement" element={<SchoolRegistrationPage />} />
           <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
           <Route path="/reinitialiser-mot-de-passe" element={<ResetPasswordPage />} />
           <Route element={<ProtectedRoute />}>
@@ -63,6 +66,7 @@ function App() {
               <Route element={<ProtectedRoute roles={['PLATFORM_ADMIN']} />}>
                 <Route path="/etablissements" element={<SchoolsPage />} />
                 <Route path="/etablissements/:schoolId" element={<SchoolDetailPage />} />
+                <Route path="/demandes-inscription" element={<SchoolsPendingPage />} />
               </Route>
               <Route element={<ProtectedRoute roles={['PLATFORM_ADMIN', 'SCHOOL_ADMIN']} />}>
                 <Route path="/journal-audit" element={<AuditLogsPage />} />

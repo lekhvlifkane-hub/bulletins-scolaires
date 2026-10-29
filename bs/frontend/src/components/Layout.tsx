@@ -67,6 +67,7 @@ export function Layout() {
   }
   if (user?.role === 'PLATFORM_ADMIN') {
     links.push({ to: '/etablissements', label: 'Établissements' });
+    links.push({ to: '/demandes-inscription', label: "Demandes d'inscription" });
   }
   links.push({ to: '/profil', label: 'Profil' });
 
