@@ -52,6 +52,9 @@ const schoolSchema = z
     email: z.string().trim().toLowerCase().email().optional(),
     accreditationNumber: z.string().trim().optional(),
     isActive: z.boolean().optional(),
+    adminName: z.string().trim().min(2).optional(),
+    adminEmail: z.string().trim().toLowerCase().email().optional(),
+    adminPassword: z.string().min(6).optional(),
   })
   .merge(schoolRulesSchema.partial());
 
@@ -246,15 +249,47 @@ router.post(
   requireCsrf,
   asyncHandler(async (req, res) => {
     const data = schoolSchema.parse(req.body);
-    const school = await prisma.school.create({ data });
+    const { adminName, adminEmail, adminPassword, ...schoolData } = data as any;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const school = await tx.school.create({
+        data: {
+          ...schoolData,
+          status: 'ACTIVE',
+          isActive: true,
+        },
+      });
+
+      let admin = null;
+      if (adminName && adminEmail && adminPassword) {
+        const existingUser = await tx.user.findUnique({ where: { email: adminEmail } });
+        if (existingUser) {
+          throw new HttpError(409, 'Cet e-mail est déjà utilisé');
+        }
+        const passwordHash = await bcrypt.hash(adminPassword, 10);
+        admin = await tx.user.create({
+          data: {
+            schoolId: school.id,
+            name: adminName,
+            email: adminEmail,
+            passwordHash,
+            role: 'SCHOOL_ADMIN',
+            isActive: true,
+          },
+        });
+      }
+
+      return { school, admin };
+    });
+
     await writeAuditLog({
       req,
       userId: req.currentUser!.id,
       action: 'SCHOOL_CREATED',
       entityType: 'School',
-      entityId: school.id,
+      entityId: result.school.id,
     });
-    res.status(201).json({ school: publicSchool(school) });
+    res.status(201).json({ school: publicSchool(result.school), admin: result.admin ? { id: result.admin.id, name: result.admin.name, email: result.admin.email } : null });
   }),
 );
 

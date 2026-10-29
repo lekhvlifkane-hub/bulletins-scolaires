@@ -15,7 +15,7 @@ export function SchoolsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', city: '' });
+  const [form, setForm] = useState({ name: '', city: '', adminName: '', adminEmail: '', adminPassword: '' });
 
   const load = async () => {
     try {
@@ -49,8 +49,8 @@ export function SchoolsPage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Création impossible');
       }
-      setForm({ name: '', city: '' });
-      setMessage('Établissement créé');
+      setForm({ name: '', city: '', adminName: '', adminEmail: '', adminPassword: '' });
+      setMessage("Établissement créé avec son administrateur");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur');
@@ -61,11 +61,11 @@ export function SchoolsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Établissements</h1>
-        <p className="text-sm text-muted-foreground">Gestion des établissements</p>
+        <p className="text-sm text-muted-foreground">Créer un établissement et son administrateur</p>
       </div>
-      <form onSubmit={create} className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-3">
+      <form onSubmit={create} className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-6">
         <input
-          className="rounded-md border border-input px-3 py-2 text-sm"
+          className="rounded-md border border-input px-3 py-2 text-sm md:col-span-2"
           placeholder="Nom de l'établissement"
           required
           value={form.name}
@@ -77,7 +77,30 @@ export function SchoolsPage() {
           value={form.city}
           onChange={(e) => setForm({ ...form, city: e.target.value })}
         />
-        <Button type="submit" disabled={loading}>Créer</Button>
+        <input
+          className="rounded-md border border-input px-3 py-2 text-sm"
+          placeholder="Nom admin"
+          required
+          value={form.adminName}
+          onChange={(e) => setForm({ ...form, adminName: e.target.value })}
+        />
+        <input
+          className="rounded-md border border-input px-3 py-2 text-sm"
+          placeholder="Email admin"
+          type="email"
+          required
+          value={form.adminEmail}
+          onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+        />
+        <input
+          className="rounded-md border border-input px-3 py-2 text-sm"
+          placeholder="Mot de passe admin"
+          type="password"
+          required
+          value={form.adminPassword}
+          onChange={(e) => setForm({ ...form, adminPassword: e.target.value })}
+        />
+        <Button type="submit" disabled={loading} className="md:col-span-6">Créer</Button>
       </form>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {message && <p className="text-sm text-emerald-600">{message}</p>}
