@@ -267,7 +267,7 @@ router.post(
         if (existingUser) {
           throw new HttpError(409, 'Cet e-mail est déjà utilisé');
         }
-        const passwordHash = await bcrypt.hash(adminPassword, 10);
+        const passwordHash = await hashPassword(adminPassword);
         admin = await tx.user.create({
           data: {
             schoolId: school.id,
