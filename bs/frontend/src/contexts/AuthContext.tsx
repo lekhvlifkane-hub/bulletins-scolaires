@@ -61,7 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSchool(null);
     setCsrfToken(null);
-  }, []);
+    // La session serveur est détruite : on en régénère une anonyme pour
+    // obtenir le jeton CSRF nécessaire à la prochaine connexion.
+    await refresh();
+  }, [refresh]);
 
   return (
     <AuthContext.Provider

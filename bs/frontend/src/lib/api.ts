@@ -1,3 +1,19 @@
+const API_BASE_URL = (() => {
+  const fromEnv = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (fromEnv && fromEnv.length > 0) return fromEnv.replace(/\/+$/, '');
+  // App Tauri packagée : pas de proxy Vite → on appelle le backend local directement.
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    return 'http://localhost:4000';
+  }
+  // Dev navigateur : URL relative → le proxy Vite (/api → :4000) prend le relais.
+  return '';
+})();
+
+function resoudreUrl(input: string): string {
+  if (/^https?:\/\//i.test(input)) return input;
+  return `${API_BASE_URL}${input.startsWith('/') ? input : `/${input}`}`;
+}
+
 type SessionUser = {
   id: string;
   schoolId: string | null;
@@ -71,7 +87,7 @@ class ApiClient {
       headers.set('Content-Type', 'application/json');
     }
 
-    const response = await fetch(input, {
+    const response = await fetch(resoudreUrl(input), {
       ...init,
       headers,
       credentials: 'include',
@@ -96,6 +112,11 @@ class ApiClient {
   }
 
   async login(email: string, password: string) {
+    // Sans jeton CSRF (ex. juste après une déconnexion), on en obtient un
+    // auprès du serveur : sinon le middleware CSRF rejette la requête.
+    if (!this.csrfToken) {
+      await this.getSession().catch(() => undefined);
+    }
     const res = await this.fetch('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
