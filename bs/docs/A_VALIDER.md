@@ -29,3 +29,4 @@
 - [ ] Une décision du conseil est un brouillon jusqu'à validation par un administrateur d'établissement. Aucune décision non validée n'est ajoutée au bilan PDF.
 - [ ] Les archives exposent les versions et historiques d'années clôturées. Leur durée de conservation reste à définir par l'établissement.
 - [ ] Les corrections d'absences et appréciations après clôture ne sont pas prévues par l'interface actuelle ; elles nécessitent une procédure tracée à définir avant mise en production.
+l

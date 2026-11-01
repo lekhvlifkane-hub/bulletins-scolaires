@@ -1,0 +1,1 @@
+const{Client}=require('pg');const c=new Client({connectionString:'postgresql://postgres:postgres@localhost:5432/bulletins'});c.connect().then(()=>c.query('SELECT 1')).then(()=>{console.log('ok');return c.end();}).then(()=>process.exit(0));

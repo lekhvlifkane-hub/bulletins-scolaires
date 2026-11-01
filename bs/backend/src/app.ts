@@ -39,7 +39,7 @@ app.use(
         callback(null, true);
         return;
       }
-      if (corsOrigins.includes(origin)) {
+      if (corsOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1')) {
         callback(null, true);
         return;
       }

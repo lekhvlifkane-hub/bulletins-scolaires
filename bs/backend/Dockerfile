@@ -23,3 +23,4 @@ COPY --from=build /app/dist ./dist
 RUN npx prisma generate
 EXPOSE 4000
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+ 
