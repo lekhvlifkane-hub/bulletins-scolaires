@@ -154,3 +154,7 @@ bs/
 - **Port 5432 déjà utilisé** : changer `POSTGRES_PORT` dans `.env`.
 - **CORS / session refusés dans Tauri** : vérifier `CORS_ORIGINS` et utiliser `http://tauri.localhost` (Windows).
 - **Erreur Prisma de connexion** : vérifier que le conteneur `db` est sain (`docker compose ps`).
+
+## Mises à jour automatiques
+
+L'application de bureau se met à jour seule (téléchargement invisible, installation à la fermeture). La procédure de publication (tag + GitHub Actions + signature) est documentée dans [docs/DEPLOIEMENT.md](./docs/DEPLOIEMENT.md#mises-à-jour-automatiques-de-lapplication-de-bureau).

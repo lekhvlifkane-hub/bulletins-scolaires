@@ -85,6 +85,36 @@ Le fichier Compose de développement n'est pas une configuration de production p
 6. Effectuer un parcours de fumée (connexion, consultation d'un bulletin et PDF) et vérifier les logs.
 7. En cas d'échec, ne pas exécuter `migrate reset` en production. Revenir à une version compatible et restaurer une sauvegarde validée selon le plan d'incident de l'établissement.
 
+### Mises à jour automatiques de l'application de bureau
+
+L'application de bureau (Tauri) s'auto-met à jour **silencieusement** après chaque publication de version. Aucune action de l'établissement n'est nécessaire.
+
+**Fonctionnement**
+
+- Au démarrage puis toutes les 4 h, l'app interroge `latest.json` sur le dépôt public `Nouhoudiallo/bulletins-scolaires-updates` ; si une version plus récente existe, elle est téléchargée en arrière-plan (invisible).
+- À la **fermeture de la fenêtre**, le paquet téléchargé est installé silencieusement (NSIS `/S` sous Windows) ; l'app ne se relance pas seule. La prochaine ouverture utilise la nouvelle version.
+- Chaque paquet est **signé** (clé Tauri) et vérifié avec la clé publique intégrée à l'app : un paquet non signé ou modifié est refusé.
+- Si le téléchargement n'était pas terminé à la fermeture, rien n'est installé ; la vérification reprend à l'ouverture suivante.
+- Support : **Windows (NSIS)** et **Linux (.AppImage uniquement)**. Les paquets `.deb`/`.rpm` ne sont pas mis à jour automatiquement — distribuer l'AppImage aux postes Linux.
+
+**Publier une version**
+
+1. S'assurer que `git status` est propre.
+2. Lancer `node scripts/release.mjs 0.1.1` (le numéro de version est libre, il doit être **supérieur** à celui de l'app installée) : le script met à jour `tauri.conf.json`, `package.json` et `Cargo.toml`, crée le commit et le tag `v0.1.1`.
+3. `git push origin main && git push origin v0.1.1` : le workflow `.github/workflows/release.yml` construit Windows + Linux, signe et publie sur le dépôt public des mises à jour.
+
+**Secrets GitHub Actions requis** (repo privé, Settings > Secrets > Actions)
+
+| Secret | Contenu |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | contenu de la clé privée générée par `tauri signer generate` (fichier `~/.tauri/bulletins-scolaires.key` sur la machine de build) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | mot de passe de cette clé |
+| `RELEASES_PAT` | token GitHub fine-grained, accès `Contents: Read and write` sur `Nouhoudiallo/bulletins-scolaires-updates` uniquement |
+
+> **Conserver la clé privée et son mot de passe hors du dépôt et en lieu sûr** (gestionnaire de secrets + sauvegarde). Perdue, il n'est plus possible de publier des mises à jour vers les installations existantes : il faudra republier une installation manuelle avec une nouvelle paire de clés.
+
+**Première installation** : elle reste manuelle (téléchargement de l'installateur publié). Windows peut afficher un avis SmartScreen tant que l'installateur n'est pas signé Authenticode ; cela n'empêche pas l'installation. Les mises à jour suivantes sont silencieuses.
+
 ### Sauvegarde et test de restauration
 
 Installer les outils clients PostgreSQL, configurer `DATABASE_URL` et `TEST_DATABASE_URL` dans `backend/.env` (ou l'environnement du processus), puis depuis `backend` :
