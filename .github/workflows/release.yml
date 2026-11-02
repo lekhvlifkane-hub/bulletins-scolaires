@@ -1,0 +1,122 @@
+name: "Mise à jour desktop — build, signature et publication"
+
+# Déclencheur : un tag manuel v* (créé via scripts/release.mjs).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+# Secrets requis (à définir dans Settings > Secrets > Actions du repo privé) :
+#   TAURI_SIGNING_PRIVATE_KEY          — contenu de ~/.tauri/bulletins-scolaires.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — contenu de ~/.tauri/bulletins-scolaires.key.pass
+#   RELEASES_PAT                       — token GitHub fine-grained (accès contenu
+#                                        read/write sur Nouhoudiallo/bulletins-scolaires-updates)
+
+jobs:
+  build-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            os: windows-latest
+          - platform: linux-x86_64
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bs/frontend/src-tauri
+
+      - name: Dépendances système Linux (webview)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Dépendances Bun
+        working-directory: bs/frontend
+        run: bun install --frozen-lockfile
+
+      - name: Construire et signer l'app
+        working-directory: bs/frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bunx tauri build
+
+      - name: Artefacts Windows
+        if: matrix.os == 'windows-latest'
+        run: ls target/release/bundle/nsis
+        working-directory: bs/frontend/src-tauri
+
+      - name: Artefacts Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: ls target/release/bundle/appimage
+        working-directory: bs/frontend/src-tauri
+
+      - name: Sauvegarder les artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            bs/frontend/src-tauri/target/release/bundle/nsis/*.exe
+            bs/frontend/src-tauri/target/release/bundle/nsis/*.exe.sig
+            bs/frontend/src-tauri/target/release/bundle/appimage/*.AppImage
+            bs/frontend/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+
+  publish:
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Les notes de release proviennent de l'annotation du tag.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts-update
+          pattern: update-*
+          merge-multiple: true
+
+      - name: Assembler latest.json + artefacts normalisés
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          node scripts/build-latest-json.mjs \
+            --tag "$TAG" \
+            --repo Nouhoudiallo/bulletins-scolaires-updates \
+            --dist dist-update \
+            --win-exe "artifacts-update/$(ls artifacts-update | grep -i '_x64-setup.exe$' | head -1)" \
+            --win-sig "artifacts-update/$(ls artifacts-update | grep -i '_x64-setup.exe.sig$' | head -1)" \
+            --linux-appimage "artifacts-update/$(ls artifacts-update | grep -i '\.AppImage$' | head -1)" \
+            --linux-sig "artifacts-update/$(ls artifacts-update | grep -i '\.AppImage.sig$' | head -1)"
+          ls -lh dist-update
+
+      - name: Publier la release sur le repo public
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          NOTES="$(git tag -l --format='%(contents:subject)' "$TAG")"
+          if gh release view "$TAG" --repo Nouhoudiallo/bulletins-scolaires-updates >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-update/* --repo Nouhoudiallo/bulletins-scolaires-updates --clobber
+          else
+            gh release create "$TAG" dist-update/* \
+              --repo Nouhoudiallo/bulletins-scolaires-updates \
+              --title "Bulletins Scolaires ${TAG#v}" \
+              --notes "${NOTES:-${TAG#v} — mise à jour automatique}"
+          fi
+          echo "Endpoint de l'updater : https://github.com/Nouhoudiallo/bulletins-scolaires-updates/releases/latest/download/latest.json"
