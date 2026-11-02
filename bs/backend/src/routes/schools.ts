@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import bcrypt from 'bcryptjs';
 import { prisma } from '../db/prisma';
 import { asyncHandler, HttpError } from '../lib/http';
 import { hashPassword } from '../lib/password';
