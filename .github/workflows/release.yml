@@ -16,21 +16,8 @@ permissions:
 #                                        read/write sur Nouhoudiallo/bulletins-scolaires-updates)
 
 jobs:
-  build-tauri:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows-x86_64
-            os: windows-latest
-          - platform: linux-x86_64
-            # Ubuntu 22.04 (glibc 2.35) et non ubuntu-latest : comme l'AppImage
-            # embarque webkit2gtk, la version de glibc du runner devient une
-            # exigence pour la machine de l'utilisateur. Construire sur une base
-            # plus ancienne garde la compatibilité ascendante (Pop!_OS 24.04 =
-            # glibc 2.39 refusait un build fait sur ubuntu-latest/glibc 2.43).
-            os: ubuntu-22.04
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -41,21 +28,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: bs/frontend/src-tauri
-
-      - name: Dépendances système Linux (webview)
-        if: matrix.platform == 'linux-x86_64'
-        run: |
-          . /etc/os-release
-          echo "Base de compilation : Ubuntu $VERSION_ID (glibc $(ldd --version | head -1 | awk '{print $NF}'))"
-          # L'AppImage embarque webkit2gtk : la glibc du runner devient une
-          # exigence pour l'utilisateur. On refuse de publier depuis une base
-          # plus récente que 22.04 (compatibilité ascendante).
-          if [ "$VERSION_ID" != "22.04" ]; then
-            echo "::error::Runner $VERSION_ID inattendu : l'AppImage exigerait une glibc trop récente."
-            exit 1
-          fi
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Dépendances Bun
         working-directory: bs/frontend
@@ -68,18 +40,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: bunx tauri build
 
-      - name: Artefacts Windows
-        if: matrix.platform == 'windows-x86_64'
-        run: ls target/release/bundle/nsis
-        working-directory: bs/frontend/src-tauri
-
-      - name: Artefacts Linux
-        if: matrix.platform == 'linux-x86_64'
-        run: ls target/release/bundle/appimage
-        working-directory: bs/frontend/src-tauri
-
-      # Copie à plat : upload-artifact v4 recrée l'arborescence d'origine dès que
-      # les motifs viennent de plusieurs dossiers, ce qui cassait le job publish.
       - name: Rassembler les artefacts (à plat)
         shell: bash
         run: |
@@ -88,32 +48,106 @@ jobs:
           rm -rf "$OUT" && mkdir -p "$OUT"
           B=bs/frontend/src-tauri/target/release/bundle
           shopt -s nullglob
-          for f in "$B"/nsis/*.exe "$B"/nsis/*.exe.sig \
-                   "$B"/appimage/*.AppImage "$B"/appimage/*.AppImage.sig \
+          for f in "$B"/nsis/*.exe "$B"/nsis/*.exe.sig; do cp "$f" "$OUT/"; done
+          ls -lh "$OUT"
+          compgen -G "$OUT/*.exe.sig" >/dev/null || {
+            echo "Signature Windows absente : vérifier TAURI_SIGNING_PRIVATE_KEY"; exit 1;
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-windows-x86_64
+          if-no-files-found: error
+          path: artifacts-out/*
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # L'AppImage embarque webkit2gtk : la glibc de la machine de build devient
+      # une exigence pour l'utilisateur. Les labels de runners GitHub ne sont pas
+      # fiables (ubuntu-22.04 a été remappé sur un hôte 26.04/glibc 2.43), donc on
+      # épingle explicitement l'image : Ubuntu 22.04 = glibc 2.35.
+      - name: Construire l'AppImage dans Ubuntu 22.04
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD":/project \
+            -w /project/bs/frontend \
+            -e TAURI_SIGNING_PRIVATE_KEY \
+            -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            ubuntu:22.04 \
+            bash -lc '
+              set -euo pipefail
+              . /etc/os-release
+              echo "Base de build : Ubuntu $VERSION_ID"
+              [ "$VERSION_ID" = "22.04" ] || { echo "Image inattendue : $VERSION_ID"; exit 1; }
+
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends \
+                build-essential curl wget file git pkg-config libssl-dev \
+                libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+                librsvg2-dev patchelf ca-certificates binutils
+
+              curl -fsSL https://bun.sh/install | bash
+              curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+              export PATH="$HOME/.bun/bin:$PATH"
+              . "$HOME/.cargo/env"
+
+              bun install --frozen-lockfile
+              bunx tauri build
+
+              # Garde-fou : l'AppImage ne doit exiger aucune glibc plus récente
+              # que celle d'Ubuntu 22.04 (2.35), sinon elle refuse de démarrer
+              # sur les distributions plus anciennes que la machine de build.
+              cd src-tauri/target/release/bundle/appimage
+              APP=$(ls *.AppImage | head -1)
+              "./$APP" --appimage-extract >/dev/null
+              MAX=$(find squashfs-root -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
+                | xargs -0 -P 8 -I{} sh -c 'if file -b "{}" | grep -q ELF; then objdump -T "{}" 2>/dev/null || true; fi' \
+                | grep -o "GLIBC_2\.[0-9]*" | sort -uV | tail -1) || true
+              echo "Exigence glibc maximale : ${MAX:-aucune}"
+              if [ "$(printf "%s\n%s\n" "${MAX:-GLIBC_2.2.5}" "GLIBC_2.35" | sort -V | tail -1)" != "GLIBC_2.35" ]; then
+                echo "ERREUR : l'AppImage exige ${MAX} > GLIBC_2.35 (incompatible)."; exit 1
+              fi
+            '
+
+      - name: Rassembler les artefacts (à plat)
+        run: |
+          set -euo pipefail
+          OUT=artifacts-out
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          B=bs/frontend/src-tauri/target/release/bundle
+          shopt -s nullglob
+          for f in "$B"/appimage/*.AppImage "$B"/appimage/*.AppImage.sig \
                    "$B"/appimage/*.AppImage.tar.gz "$B"/appimage/*.AppImage.tar.gz.sig; do
             cp "$f" "$OUT/"
           done
           ls -lh "$OUT"
-          # Signature indispensable pour publier une mise à jour vérifiable.
-          compgen -G "$OUT/*.sig" >/dev/null || { echo "Signatures absentes : vérifier TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
+          compgen -G "$OUT/*.AppImage*" >/dev/null || { echo "AppImage absente"; exit 1; }
+          compgen -G "$OUT/*.sig" >/dev/null || {
+            echo "Signature Linux absente : vérifier TAURI_SIGNING_PRIVATE_KEY"; exit 1;
+          }
 
-      - name: Sauvegarder les artefacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: update-${{ matrix.platform }}
+          name: update-linux-x86_64
           if-no-files-found: error
           path: artifacts-out/*
 
   publish:
-    needs: build-tauri
+    needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           # Les notes de release proviennent de l'annotation du tag.
           fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@v2
 
       - uses: actions/download-artifact@v4
         with:
