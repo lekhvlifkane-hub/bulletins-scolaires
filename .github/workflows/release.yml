@@ -92,7 +92,7 @@ jobs:
               apt-get install -y -qq --no-install-recommends \
                 build-essential curl wget file git pkg-config libssl-dev \
                 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-                librsvg2-dev patchelf ca-certificates binutils
+                librsvg2-dev patchelf ca-certificates binutils unzip
 
               curl -fsSL https://bun.sh/install | bash
               curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
