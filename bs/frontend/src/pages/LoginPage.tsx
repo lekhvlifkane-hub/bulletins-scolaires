@@ -48,7 +48,7 @@ export function LoginPage() {
           Mise à jour automatique appliquée
         </p>
         <p className="mt-2 text-lg font-semibold text-brand-emerald">
-          Vous utilisez maintenant la version 0.1.2
+          Vous utilisez maintenant la version {__APP_VERSION__}
         </p>
       </div>
       <div className="w-full max-w-md space-y-6 rounded-lg border border-border p-6 shadow-sm">

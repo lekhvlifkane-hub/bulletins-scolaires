@@ -24,7 +24,12 @@ jobs:
           - platform: windows-x86_64
             os: windows-latest
           - platform: linux-x86_64
-            os: ubuntu-latest
+            # Ubuntu 22.04 (glibc 2.35) et non ubuntu-latest : comme l'AppImage
+            # embarque webkit2gtk, la version de glibc du runner devient une
+            # exigence pour la machine de l'utilisateur. Construire sur une base
+            # plus ancienne garde la compatibilité ascendante (Pop!_OS 24.04 =
+            # glibc 2.39 refusait un build fait sur ubuntu-latest/glibc 2.43).
+            os: ubuntu-22.04
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +43,7 @@ jobs:
           workspaces: bs/frontend/src-tauri
 
       - name: Dépendances système Linux (webview)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.platform == 'linux-x86_64'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -55,12 +60,12 @@ jobs:
         run: bunx tauri build
 
       - name: Artefacts Windows
-        if: matrix.os == 'windows-latest'
+        if: matrix.platform == 'windows-x86_64'
         run: ls target/release/bundle/nsis
         working-directory: bs/frontend/src-tauri
 
       - name: Artefacts Linux
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.platform == 'linux-x86_64'
         run: ls target/release/bundle/appimage
         working-directory: bs/frontend/src-tauri
 
