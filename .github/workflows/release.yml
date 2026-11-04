@@ -75,47 +75,47 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          docker run --rm \
+          # Heredoc : le script contient lui-même des quotes, on le passe sur
+          # stdin (`bash -s`) pour éviter tout conflit d'échappement.
+          docker run --rm -i \
             -v "$PWD":/project \
             -w /project/bs/frontend \
             -e TAURI_SIGNING_PRIVATE_KEY \
             -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
-            ubuntu:22.04 \
-            bash -lc '
-              set -euo pipefail
-              . /etc/os-release
-              echo "Base de build : Ubuntu $VERSION_ID"
-              [ "$VERSION_ID" = "22.04" ] || { echo "Image inattendue : $VERSION_ID"; exit 1; }
+            ubuntu:22.04 bash -s <<'CONTAINER'
+          set -euo pipefail
+          . /etc/os-release
+          echo "Base de build : Ubuntu $VERSION_ID"
+          [ "$VERSION_ID" = "22.04" ] || { echo "Image inattendue : $VERSION_ID"; exit 1; }
 
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update -qq
-              apt-get install -y -qq --no-install-recommends \
-                build-essential curl wget file git pkg-config libssl-dev \
-                libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-                librsvg2-dev patchelf ca-certificates binutils unzip
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            build-essential curl wget file git unzip pkg-config libssl-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev patchelf ca-certificates binutils
 
-              curl -fsSL https://bun.sh/install | bash
-              curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
-              export PATH="$HOME/.bun/bin:$PATH"
-              . "$HOME/.cargo/env"
+          curl -fsSL https://bun.sh/install | bash
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+          export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$PATH"
 
-              bun install --frozen-lockfile
-              bunx tauri build
+          bun install --frozen-lockfile
+          bunx tauri build
 
-              # Garde-fou : l'AppImage ne doit exiger aucune glibc plus récente
-              # que celle d'Ubuntu 22.04 (2.35), sinon elle refuse de démarrer
-              # sur les distributions plus anciennes que la machine de build.
-              cd src-tauri/target/release/bundle/appimage
-              APP=$(ls *.AppImage | head -1)
-              "./$APP" --appimage-extract >/dev/null
-              MAX=$(find squashfs-root -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
-                | xargs -0 -P 8 -I{} sh -c 'if file -b "{}" | grep -q ELF; then objdump -T "{}" 2>/dev/null || true; fi' \
-                | grep -o "GLIBC_2\.[0-9]*" | sort -uV | tail -1) || true
-              echo "Exigence glibc maximale : ${MAX:-aucune}"
-              if [ "$(printf "%s\n%s\n" "${MAX:-GLIBC_2.2.5}" "GLIBC_2.35" | sort -V | tail -1)" != "GLIBC_2.35" ]; then
-                echo "ERREUR : l'AppImage exige ${MAX} > GLIBC_2.35 (incompatible)."; exit 1
-              fi
-            '
+          # Garde-fou : l'AppImage ne doit exiger aucune glibc plus récente que
+          # celle d'Ubuntu 22.04 (2.35), sinon elle refuse de démarrer ailleurs.
+          cd src-tauri/target/release/bundle/appimage
+          APP=$(ls *.AppImage | head -1)
+          "./$APP" --appimage-extract >/dev/null
+          MAX=$(find squashfs-root -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
+            | xargs -0 -P 8 -I{} sh -c 'if file -b "{}" | grep -q ELF; then objdump -T "{}" 2>/dev/null || true; fi' \
+            | grep -o 'GLIBC_2\.[0-9]*' | sort -uV | tail -1) || true
+          echo "Exigence glibc maximale : ${MAX:-aucune}"
+          if [ "$(printf '%s\n%s\n' "${MAX:-GLIBC_2.2.5}" "GLIBC_2.35" | sort -V | tail -1)" != "GLIBC_2.35" ]; then
+            echo "ERREUR : l'AppImage exige ${MAX} > GLIBC_2.35 (incompatible)."
+            exit 1
+          fi
+          CONTAINER
 
       - name: Rassembler les artefacts (à plat)
         run: |
@@ -129,7 +129,7 @@ jobs:
             cp "$f" "$OUT/"
           done
           ls -lh "$OUT"
-          compgen -G "$OUT/*.AppImage*" >/dev/null || { echo "AppImage absente"; exit 1; }
+          compgen -G "$OUT/*.AppImage" >/dev/null || { echo "AppImage absente"; exit 1; }
           compgen -G "$OUT/*.sig" >/dev/null || {
             echo "Signature Linux absente : vérifier TAURI_SIGNING_PRIVATE_KEY"; exit 1;
           }
