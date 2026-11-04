@@ -19,8 +19,8 @@
  *
  * Champs de `latest.json` (ref. tauri-plugin-updater v2) :
  * { version, notes, pub_date, platforms: { "<target>": { signature, url } } }
- * La clé `signature` est le contenu du fichier `.sig` TEL QUEL (déjà base64 :
- * ne pas le ré-encoder).
+ * La clé `signature` est le contenu du fichier `.sig` (signature minisign déjà
+ * encodée en base64 par la CLI Tauri) : ne pas la ré-encoder une seconde fois.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -71,11 +71,20 @@ for (const src of sources) {
   used.add(file);
   used.add(sig);
 
-  // Le fichier `.sig` contient déjà la signature encodée en base64 : le
-  // manifeste attend ce contenu tel quel (pas de double encodage).
-  const signature = (await fs.readFile(sig, 'utf8')).trim();
-  if (!signature.startsWith('untrusted comment:')) {
-    fail(`Le fichier ${path.basename(sig)} n'a pas le format d'une signature minisign.`);
+  // Le fichier `.sig` écrit par la CLI Tauri contient la signature minisign
+  // déjà encodée en base64 : le manifeste attend exactement ce contenu (le
+  // plugin le décode une fois avec `base64_to_string`). Si un `.sig` contient
+  // la signature en clair (4 lignes `untrusted comment:`), on l'encode.
+  let signature = (await fs.readFile(sig, 'utf8')).trim();
+  if (signature.startsWith('untrusted comment:')) {
+    signature = Buffer.from(signature, 'utf8').toString('base64');
+  } else {
+    const decoded = Buffer.from(signature, 'base64').toString('utf8');
+    if (!decoded.startsWith('untrusted comment:')) {
+      fail(
+        `Le fichier ${path.basename(sig)} n'est ni une signature minisign en clair, ni son encodage base64.`,
+      );
+    }
   }
 
   const destName = src.rename(file).replace(/\s+/g, '.');
