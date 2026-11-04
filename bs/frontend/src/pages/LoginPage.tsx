@@ -41,7 +41,16 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-4 py-8">
+      {/* Bandeau de vérification : doit apparaître après la mise à jour en 0.1.2. */}
+      <div className="w-full max-w-md rounded-lg border-4 border-brand-emerald bg-white p-6 text-center shadow-sm">
+        <p className="text-2xl font-bold text-brand-navy">
+          Mise à jour automatique appliquée
+        </p>
+        <p className="mt-2 text-lg font-semibold text-brand-emerald">
+          Vous utilisez maintenant la version 0.1.2
+        </p>
+      </div>
       <div className="w-full max-w-md space-y-6 rounded-lg border border-border p-6 shadow-sm">
         <div className="flex flex-col items-center gap-2 text-center">
           <img src="/logo.svg" alt="Bulletins Scolaires" className="h-12 w-12" />
