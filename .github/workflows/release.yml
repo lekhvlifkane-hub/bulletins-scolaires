@@ -64,16 +64,31 @@ jobs:
         run: ls target/release/bundle/appimage
         working-directory: bs/frontend/src-tauri
 
+      # Copie à plat : upload-artifact v4 recrée l'arborescence d'origine dès que
+      # les motifs viennent de plusieurs dossiers, ce qui cassait le job publish.
+      - name: Rassembler les artefacts (à plat)
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=artifacts-out
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          B=bs/frontend/src-tauri/target/release/bundle
+          shopt -s nullglob
+          for f in "$B"/nsis/*.exe "$B"/nsis/*.exe.sig \
+                   "$B"/appimage/*.AppImage "$B"/appimage/*.AppImage.sig \
+                   "$B"/appimage/*.AppImage.tar.gz "$B"/appimage/*.AppImage.tar.gz.sig; do
+            cp "$f" "$OUT/"
+          done
+          ls -lh "$OUT"
+          # Signature indispensable pour publier une mise à jour vérifiable.
+          compgen -G "$OUT/*.sig" >/dev/null || { echo "Signatures absentes : vérifier TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
+
       - name: Sauvegarder les artefacts
         uses: actions/upload-artifact@v4
         with:
           name: update-${{ matrix.platform }}
           if-no-files-found: error
-          path: |
-            bs/frontend/src-tauri/target/release/bundle/nsis/*.exe
-            bs/frontend/src-tauri/target/release/bundle/nsis/*.exe.sig
-            bs/frontend/src-tauri/target/release/bundle/appimage/*.AppImage
-            bs/frontend/src-tauri/target/release/bundle/appimage/*.AppImage.sig
+          path: artifacts-out/*
 
   publish:
     needs: build-tauri
@@ -99,10 +114,7 @@ jobs:
             --tag "$TAG" \
             --repo Nouhoudiallo/bulletins-scolaires-updates \
             --dist dist-update \
-            --win-exe "artifacts-update/$(ls artifacts-update | grep -i '_x64-setup.exe$' | head -1)" \
-            --win-sig "artifacts-update/$(ls artifacts-update | grep -i '_x64-setup.exe.sig$' | head -1)" \
-            --linux-appimage "artifacts-update/$(ls artifacts-update | grep -i '\.AppImage$' | head -1)" \
-            --linux-sig "artifacts-update/$(ls artifacts-update | grep -i '\.AppImage.sig$' | head -1)"
+            --artifacts-dir artifacts-update
           ls -lh dist-update
 
       - name: Publier la release sur le repo public
