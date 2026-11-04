@@ -107,9 +107,12 @@ jobs:
           cd src-tauri/target/release/bundle/appimage
           APP=$(ls *.AppImage | head -1)
           "./$APP" --appimage-extract >/dev/null
+          # Chaque processus n'écrit qu'une seule ligne courte (écriture atomique) :
+          # paralléliser l'objdump complet entrelace les lignes dans le tube et
+          # produit des valeurs corrompues (vu en CI : « GLIBC_2.00000092 »).
           MAX=$(find squashfs-root -type f \( -name "*.so*" -o -perm -u+x \) -print0 \
-            | xargs -0 -P 8 -I{} sh -c 'if file -b "{}" | grep -q ELF; then objdump -T "{}" 2>/dev/null || true; fi' \
-            | grep -o 'GLIBC_2\.[0-9]*' | sort -uV | tail -1) || true
+            | LC_ALL=C xargs -0 -P 8 -I{} sh -c 'f="{}"; file -b "$f" | grep -q ELF || exit 0; objdump -T "$f" 2>/dev/null | grep -oE "GLIBC_2\.[0-9]{1,2}(\.[0-9]+)?" | sort -uV | tail -1' \
+            | LC_ALL=C sort -uV | tail -1) || true
           echo "Exigence glibc maximale : ${MAX:-aucune}"
           if [ "$(printf '%s\n%s\n' "${MAX:-GLIBC_2.2.5}" "GLIBC_2.35" | sort -V | tail -1)" != "GLIBC_2.35" ]; then
             echo "ERREUR : l'AppImage exige ${MAX} > GLIBC_2.35 (incompatible)."
