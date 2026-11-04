@@ -45,6 +45,15 @@ jobs:
       - name: Dépendances système Linux (webview)
         if: matrix.platform == 'linux-x86_64'
         run: |
+          . /etc/os-release
+          echo "Base de compilation : Ubuntu $VERSION_ID (glibc $(ldd --version | head -1 | awk '{print $NF}'))"
+          # L'AppImage embarque webkit2gtk : la glibc du runner devient une
+          # exigence pour l'utilisateur. On refuse de publier depuis une base
+          # plus récente que 22.04 (compatibilité ascendante).
+          if [ "$VERSION_ID" != "22.04" ]; then
+            echo "::error::Runner $VERSION_ID inattendu : l'AppImage exigerait une glibc trop récente."
+            exit 1
+          fi
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
