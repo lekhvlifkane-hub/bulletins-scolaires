@@ -96,7 +96,7 @@ L'application de bureau (Tauri) s'auto-met à jour **silencieusement** après ch
 - Chaque paquet est **signé** (clé Tauri) et vérifié avec la clé publique intégrée à l'app : un paquet non signé ou modifié est refusé.
 - Si le téléchargement n'était pas terminé à la fermeture, rien n'est installé ; la vérification reprend à l'ouverture suivante.
 - Support : **Windows (NSIS)** et **Linux (.AppImage uniquement)**. Les paquets `.deb`/`.rpm` ne sont pas mis à jour automatiquement — distribuer l'AppImage aux postes Linux.
-- **Compatibilité Linux** : l'AppImage embarque webkit2gtk ; elle exige donc au maximum la glibc de la machine de build. La CI construit **dans un conteneur `ubuntu:22.04`** (glibc 2.35) et **échoue** si le paquet obtenu exige une glibc supérieure. Ne pas remplacer ce conteneur par un label de runner GitHub : ces labels changent de version (un build « ubuntu-22.04 » s'est retrouvé produit sur un hôte 26.04 et refusait de démarrer sur Pop!_OS 24.04).
+- **Compatibilité Linux** : l'AppImage embarque webkit2gtk ; elle exige donc au maximum la glibc de la machine de build. La CI construit **dans un conteneur `ubuntu:22.04`** (glibc 2.35) et **échoue** si le paquet obtenu exige une glibc supérieure. Ne pas remplacer ce conteneur par un label de runner GitHub : un label ne garantit pas la version de l'image (et deux exécutions concurrentes sur un même tag peuvent publier des paquets différents — d'où le bloc `concurrency` du workflow, qui annule le run précédent).
 
 **Publier une version**
 
