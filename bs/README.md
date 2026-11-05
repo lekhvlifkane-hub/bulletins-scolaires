@@ -87,6 +87,8 @@ npm run dev
 
 Le serveur Vite écoute sur <http://localhost:1420>. L'API doit autoriser cette origine via `CORS_ORIGINS`.
 
+L'application desktop installée à partir de la version 0.1.5 se connecte au backend de production Railway. En développement (`tauri dev` ou `npm run dev`), le frontend utilise le backend local sur `http://localhost:4000`. Le backend est hébergé séparément ; le frontend web n'est pas déployé sur Railway.
+
 ## Tableau de bord et vie scolaire
 
 Le tableau de bord consomme `GET /api/dashboard` pour afficher les indicateurs réels de la base (élèves, inscriptions, classes, disciplines, évaluations, bulletins, absences et retards). Les agrégats d'un établissement sont filtrés côté serveur ; un administrateur plateforme ne reçoit que des compteurs de plateforme.

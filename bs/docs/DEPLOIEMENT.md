@@ -67,6 +67,32 @@ Le fichier Compose de développement n'est pas une configuration de production p
 
 L'application Tauri distribuée utilise l'URL de production du backend ; `tauri dev` continue d'utiliser `http://localhost:4000`. Après un changement d'URL du backend, reconstruire et publier une nouvelle version desktop.
 
+### Déploiement de l'API sur Railway (backend uniquement)
+
+Le dépôt fournit l'image Docker du backend (`backend/Dockerfile`) : API Node.js, `prisma migrate deploy` appliqué au démarrage, santé `/api/health`, configuration `backend/railway.json`. **Ce service ne déploie pas l'interface** : l'application Tauri ou un hébergement frontend distinct se connecte à l'API.
+
+1. Créer un projet Railway, puis ajouter un service PostgreSQL. Ne pas exposer sa connexion publique.
+2. **Service backend** : source = ce dépôt, *root directory* = `bs/backend`. Variables :
+   - `DATABASE_URL` : référence au service PostgreSQL (`${{Postgres.DATABASE_URL}}`) ;
+   - `NODE_ENV=production` ;
+   - `SESSION_SECRET` : valeur aléatoire d'au moins 32 caractères, propre à la production ;
+   - `SESSION_COOKIE_SECURE=true` ; `SESSION_COOKIE_SAMESITE=lax` (ou `none` si l'interface est servie depuis un autre site) ;
+   - `APP_BASE_URL=https://<adresse-publique-de-l-interface>` ;
+   - `CORS_ORIGINS` : origines autorisées, séparées par des virgules (adresse de l'interface web et origines Tauri `tauri://localhost,http://tauri.localhost`) ;
+   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` ;
+   - `LOGIN_RATE_LIMIT` selon la politique de l'établissement.
+   L'API refuse de démarrer si un secret d'exemple, un cookie non sécurisé, un `APP_BASE_URL` local ou un fournisseur SMTP incomplet subsistent.
+3. Déployer le service (`railway up --service backend` depuis `bs/backend`, ou via l'intégration Git) et attendre le healthcheck `/api/health`.
+4. Créer le compte administrateur plateforme depuis le service backend (shell Railway, ou `railway run` depuis `bs/backend`) :
+   `npm run create-platform-admin -- --email admin@exemple.sn --name "Administrateur plateforme"`.
+   Transmettre le mot de passe par un canal sûr et le changer après la première connexion.
+5. Vérifier en HTTPS : `/api/health`, connexion (cookie `Secure`), ouverture d'un bulletin et PDF, invitation d'un utilisateur, puis vérifier les journaux.
+6. En cas de domaine personnalisé, mettre à jour `APP_BASE_URL` et `CORS_ORIGINS`, puis redéployer le backend.
+
+Les migrations sont appliquées automatiquement à chaque démarrage du conteneur backend ; sauvegarder la base avant toute mise à jour.
+
+Railway déprécie les fichiers `railway.json` au profit de `.railway/railway.ts` (les fichiers actuels cessent de fonctionner le 1er décembre 2026) : migrer la configuration avant cette échéance (`railway config migrate`).
+
 ### Secrets et transport
 
 - Générer des valeurs indépendantes et aléatoires pour `POSTGRES_PASSWORD` et `SESSION_SECRET` (au moins 32 caractères). Pour le mot de passe PostgreSQL de Compose, choisir des caractères compatibles URL (par exemple une valeur hexadécimale aléatoire) ; l'injecter via le gestionnaire de secrets de l'hébergeur, jamais dans Git ni dans les journaux de déploiement.

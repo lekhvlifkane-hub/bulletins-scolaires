@@ -1,5 +1,5 @@
 import { prisma } from '../src/db/prisma';
-import { hashPassword } from '../src/lib/password';
+import { generateTemporaryPassword, hashPassword } from '../src/lib/password';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -27,7 +27,7 @@ async function main() {
     process.exit(1);
   }
 
-  const password = passwordInput ?? Math.random().toString(36).slice(-12) + 'Ab1!';
+  const password = passwordInput ?? generateTemporaryPassword();
   const passwordHash = await hashPassword(password);
 
   const user = await prisma.user.create({
