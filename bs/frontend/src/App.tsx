@@ -14,6 +14,9 @@ import { SchoolSettingsPage } from '@/pages/SchoolSettingsPage';
 import { TemporaryAccessPage } from '@/pages/TemporaryAccessPage';
 import { AuditLogsPage } from '@/pages/AuditLogsPage';
 import { StudentsPage } from '@/pages/StudentsPage';
+import { ClassesPage } from '@/pages/ClassesPage';
+import { DisciplinesPage } from '@/pages/DisciplinesPage';
+import { EvaluationTypesPage } from '@/pages/EvaluationTypesPage';
 import { StudentDetailPage } from '@/pages/StudentDetailPage';
 import { NotesEntryPage } from '@/pages/NotesEntryPage';
 import { VerificationsPage } from '@/pages/VerificationsPage';
@@ -42,11 +45,18 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/profil" element={<ProfilePage />} />
               <Route path="/eleves" element={<StudentsPage />} />
+              <Route
+                element={<ProtectedRoute roles={['SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT']} />}
+              >
+                <Route path="/classes" element={<ClassesPage />} />
+                <Route path="/disciplines" element={<DisciplinesPage />} />
+              </Route>
               <Route path="/eleves/:id" element={<StudentDetailPage />} />
               <Route
                 element={<ProtectedRoute roles={['SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT']} />}
               >
                 <Route path="/saisie-notes" element={<NotesEntryPage />} />
+                <Route path="/types-evaluation" element={<EvaluationTypesPage />} />
                 <Route path="/verifications" element={<VerificationsPage />} />
                 <Route path="/calculs" element={<CalculsPage />} />
                 <Route path="/bulletins" element={<BulletinsPage />} />

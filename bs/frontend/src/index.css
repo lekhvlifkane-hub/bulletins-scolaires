@@ -4,26 +4,26 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 210 76% 18%;
+    --background: 210 20% 98%;
+    --foreground: 210 55% 18%;
     --card: 0 0% 100%;
-    --card-foreground: 210 76% 18%;
+    --card-foreground: 210 55% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 210 76% 18%;
-    --primary: 210 76% 18%;
+    --popover-foreground: 210 55% 18%;
+    --primary: 210 63% 23%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 158 87% 33%;
+    --secondary: 157 74% 32%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 45%;
-    --accent: 42 76% 58%;
+    --muted: 210 18% 95%;
+    --muted-foreground: 215 14% 44%;
+    --accent: 42 78% 58%;
     --accent-foreground: 210 76% 18%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 158 87% 33%;
-    --radius: 0.75rem;
+    --border: 214 24% 89%;
+    --input: 214 24% 89%;
+    --ring: 157 74% 32%;
+    --radius: 0.85rem;
   }
 
   * {
@@ -32,5 +32,6 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01" on, "cv11" on;
   }
 }
