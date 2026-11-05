@@ -887,12 +887,58 @@ describe('Phase 4 — affectations discipline / classe', () => {
     expect(doublon.status).toBe(409);
   });
 
+  it('modifie un coefficient en conservant la version précédente et son historique', async () => {
+    const affectation = await admin
+      .post('/api/schooling/classroom-subjects')
+      .set('x-csrf-token', await csrf(admin))
+      .send({ classroomId: ctx.classroomId, subjectId: philoId, coefficient: '2' });
+    expect(affectation.status).toBe(201);
+
+    const updated = await admin
+      .patch(`/api/schooling/classroom-subjects/${affectation.body.classroomSubject.id}/coefficient`)
+      .set('x-csrf-token', await csrf(admin))
+      .send({ coefficient: '3,5' });
+
+    expect(updated.status, JSON.stringify(updated.body)).toBe(201);
+    expect(updated.body.classroomSubject.coefficient).toBe('3.5');
+    expect(updated.body.classroomSubject.effectiveFrom).toEqual(expect.any(String));
+
+    const history = await admin.get(`/api/schooling/classroom-subjects?classroomId=${ctx.classroomId}`);
+    const versions = history.body.classroomSubjects.filter(
+      (row: { subjectId: string }) => row.subjectId === philoId,
+    );
+    expect(versions).toHaveLength(2);
+    const previous = versions.find(
+      (row: { id: string }) => row.id === affectation.body.classroomSubject.id,
+    );
+    const current = versions.find(
+      (row: { id: string }) => row.id === updated.body.classroomSubject.id,
+    );
+    expect(previous.coefficient).toBe('2');
+    expect(previous.effectiveTo).toBe(current.effectiveFrom);
+    expect(current.effectiveTo).toBeNull();
+  });
+
   it('refuse un coefficient non numérique', async () => {
     const res = await admin
       .post('/api/schooling/classroom-subjects')
       .set('x-csrf-token', await csrf(admin))
       .send({ classroomId: ctx.classroomId, subjectId: philoId, coefficient: 'beaucoup' });
     expect(res.status).toBe(400);
+  });
+
+  it('refuse un coefficient de remplacement avec plus de deux décimales', async () => {
+    const affectation = await admin
+      .post('/api/schooling/classroom-subjects')
+      .set('x-csrf-token', await csrf(admin))
+      .send({ classroomId: ctx.classroomId, subjectId: philoId, coefficient: 2 });
+    expect(affectation.status).toBe(201);
+
+    const response = await admin
+      .patch(`/api/schooling/classroom-subjects/${affectation.body.classroomSubject.id}/coefficient`)
+      .set('x-csrf-token', await csrf(admin))
+      .send({ coefficient: '2.345' });
+    expect(response.status).toBe(400);
   });
 
   it('refuse une classe ou une discipline d\'un autre établissement', async () => {
@@ -997,6 +1043,26 @@ describe('Phase 4 — calcul des moyennes et classement', () => {
     expect(mathsDelta.moyenne).toBe('11.00');
     expect(mathsDelta.coefficient).toBe('3');
     expect(mathsDelta.pointsPonderes).toBe('33');
+  });
+
+  it('utilise le nouveau coefficient pour les calculs sans dupliquer la matière historique', async () => {
+    const updated = await admin
+      .patch(`/api/schooling/classroom-subjects/${ctx.mathsCsf}/coefficient`)
+      .set('x-csrf-token', await csrf(admin))
+      .send({ coefficient: '5' });
+    expect(updated.status, JSON.stringify(updated.body)).toBe(201);
+
+    const result = await admin.get(
+      `/api/calculations?classroomId=${ctx.classroomId}&semesterId=${ctx.semestre1Id}`,
+    );
+    expect(result.status).toBe(200);
+    const alpha = result.body.eleves.find((e: { matricule: string }) => e.matricule === 'ELV-1');
+    const maths = alpha.matieres.filter(
+      (subject: { subjectName: string }) => subject.subjectName === 'Mathématiques',
+    );
+    expect(maths).toHaveLength(1);
+    expect(maths[0].coefficient).toBe('5');
+    expect(maths[0].pointsPonderes).toBe('80');
   });
 
   it('exclut les évaluations non validées du calcul, et les inclut en prévisualisation', async () => {

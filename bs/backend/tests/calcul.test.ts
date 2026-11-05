@@ -236,6 +236,32 @@ describe('§10 — moyenne générale et points pondérés', () => {
     expect(r.matieres.find((m) => m.effectiveTo instanceof Date)?.comptabilisee).toBe(false);
   });
 
+  it('n’utilise pas un coefficient qui ne sera effectif qu’après la date du calcul', () => {
+    const r = calculerResultatsEleve(
+      [
+        matiere(
+          'A',
+          2,
+          [{ id: 'a1', categorie: 'DEVOIR', notes: [['SAISIE', 10]] }],
+          {
+            effectiveFrom: new Date('2026-09-01T00:00:00.000Z'),
+            effectiveTo: new Date('2026-10-01T00:00:00.000Z'),
+          },
+        ),
+        matiere(
+          'A',
+          5,
+          [{ id: 'a2', categorie: 'DEVOIR', notes: [['SAISIE', 18]] }],
+          { effectiveFrom: new Date('2026-10-01T00:00:00.000Z') },
+        ),
+      ],
+      { dateCalcul: new Date('2026-09-30T00:00:00.000Z') },
+    );
+
+    expect(r.moyenneGenerale?.toString()).toBe('10');
+    expect(r.totalCoeficients.toString()).toBe('2');
+  });
+
   it('aucune matière comptabilisée : moyenne non calculable, jamais 0', () => {
     const r = calculerResultatsEleve([
       matiere('A', 0, [{ id: 'a1', categorie: 'DEVOIR', notes: [['SAISIE', 12]] }]),

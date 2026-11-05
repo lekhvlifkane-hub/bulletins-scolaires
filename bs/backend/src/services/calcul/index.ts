@@ -353,10 +353,19 @@ export function calculerResultatsEleve(
       motifsGlobaux.push(`matière ${matiere.subjectId} : coefficient invalide, exclue du dénominateur`);
     }
 
+    const versionNotStarted =
+      matiere.effectiveFrom !== null &&
+      matiere.effectiveFrom !== undefined &&
+      matiere.effectiveFrom.getTime() > p.dateCalcul.getTime();
+    if (comptabilisee && versionNotStarted) {
+      comptabilisee = false;
+      motifs.push('version du coefficient pas encore effective : non utilisée pour ce calcul');
+    }
+
     const versionClose =
       matiere.effectiveTo !== null &&
       matiere.effectiveTo !== undefined &&
-      matiere.effectiveTo.getTime() < p.dateCalcul.getTime();
+      matiere.effectiveTo.getTime() <= p.dateCalcul.getTime();
     if (comptabilisee && versionClose) {
       comptabilisee = false;
       motifs.push('version du coefficient close : non utilisée pour ce calcul');

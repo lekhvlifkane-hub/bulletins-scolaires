@@ -24,6 +24,9 @@ const classroomSubjectSchema = z.object({
   coefficient: z.union([z.coerce.number().min(0), z.string().min(1)]),
   effectiveTo: z.coerce.date().nullable().optional(),
 });
+const coefficientUpdateSchema = z.object({
+  coefficient: z.union([z.coerce.number().min(0), z.string().trim().min(1)]),
+});
 router.use(requireAuth, requireRole('SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'));
 
 router.get('/years', asyncHandler(async (req, res) => {
@@ -257,6 +260,70 @@ router.post('/classroom-subjects', requireCsrf, asyncHandler(async (req, res) =>
     metadata: { classroomId: classroom.id, subjectId: subject.id, coefficient: String(coefficient) },
   });
   res.status(201).json({ classroomSubject: { ...created, coefficient: String(created.coefficient) } });
+}));
+
+router.patch('/classroom-subjects/:id/coefficient', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = coefficientUpdateSchema.parse(req.body);
+  const coefficientText = String(data.coefficient).replace(',', '.');
+  const coefficient = Number(coefficientText);
+  if (!Number.isFinite(coefficient) || coefficient < 0 || coefficient > 9999.99 ||
+      !/^\d+(\.\d{1,2})?$/.test(coefficientText)) {
+    throw new HttpError(400, 'Coefficient invalide : utilisez un nombre positif avec au plus deux décimales');
+  }
+
+  const current = await prisma.classroomSubject.findFirst({
+    where: { id: req.params.id, schoolId, effectiveTo: null },
+    include: { classroom: { include: { academicYear: true } }, subject: true },
+  });
+  if (!current) throw new HttpError(404, 'Affectation de discipline introuvable');
+  if (current.classroom.academicYear.status === 'CLOSED') {
+    throw new HttpError(409, "L'année scolaire est clôturée");
+  }
+  if (current.coefficient.equals(new Prisma.Decimal(coefficientText))) {
+    throw new HttpError(400, 'Le nouveau coefficient est identique au coefficient actuel');
+  }
+
+  const effectiveFrom = new Date();
+  const created = await prisma.$transaction(async (transaction) => {
+    const closed = await transaction.classroomSubject.updateMany({
+      where: { id: current.id, schoolId, effectiveTo: null },
+      data: { effectiveTo: effectiveFrom },
+    });
+    if (closed.count !== 1) {
+      throw new HttpError(409, 'Le coefficient a déjà été modifié. Rechargez la page avant de réessayer.');
+    }
+    return transaction.classroomSubject.create({
+      data: {
+        schoolId,
+        classroomId: current.classroomId,
+        subjectId: current.subjectId,
+        coefficient: new Prisma.Decimal(coefficientText),
+        effectiveFrom,
+      },
+      include: { subject: true, classroom: true },
+    });
+  });
+
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'CLASSROOM_SUBJECT_COEFFICIENT_UPDATED',
+    entityType: 'ClassroomSubject',
+    entityId: created.id,
+    metadata: {
+      classroomId: current.classroomId,
+      subjectId: current.subjectId,
+      previousAssignmentId: current.id,
+      previousCoefficient: String(current.coefficient),
+      coefficient: coefficientText,
+      effectiveFrom: effectiveFrom.toISOString(),
+    },
+  });
+  res.status(201).json({
+    classroomSubject: { ...created, coefficient: String(created.coefficient) },
+  });
 }));
 
 export const schoolingRouter=router;

@@ -107,6 +107,7 @@ export async function calculerResultatsClasse(options: {
     options.schoolId,
     options.classroomId
   );
+  const dateCalcul = options.dateCalcul ?? new Date();
 
   const classroomSubjects = await prisma.classroomSubject.findMany({
     where: { schoolId: options.schoolId, classroomId: options.classroomId },
@@ -115,6 +116,22 @@ export async function calculerResultatsClasse(options: {
   if (classroomSubjects.length === 0) {
     throw new HttpError(422, 'Aucune discipline affectée à cette classe : rien à calculer');
   }
+  const classroomSubjectsById = new Map(classroomSubjects.map((row) => [row.id, row]));
+  const classroomSubjectsActives = new Map<
+    string,
+    (typeof classroomSubjects)[number]
+  >();
+  for (const row of classroomSubjects) {
+    const effectiveAtDate =
+      row.effectiveFrom.getTime() <= dateCalcul.getTime() &&
+      (row.effectiveTo === null || row.effectiveTo.getTime() > dateCalcul.getTime());
+    if (!effectiveAtDate) continue;
+    const previous = classroomSubjectsActives.get(row.subjectId);
+    if (!previous || row.effectiveFrom > previous.effectiveFrom) {
+      classroomSubjectsActives.set(row.subjectId, row);
+    }
+  }
+  const currentClassroomSubjects = [...classroomSubjectsActives.values()];
 
   const assessments = await prisma.assessment.findMany({
     where: {
@@ -148,7 +165,7 @@ export async function calculerResultatsClasse(options: {
   }
 
   const params = parametresEtablissement(school, {
-    ...(options.dateCalcul ? { dateCalcul: options.dateCalcul } : {}),
+    dateCalcul,
     ...(options.overrides ?? {}),
   });
 
@@ -173,14 +190,17 @@ export async function calculerResultatsClasse(options: {
   const eleves: EleveResultat[] = [];
 
   for (const enrollment of enrollments) {
-    const matieres: MatiereInput[] = classroomSubjects.map((cs) => ({
+    const matieres: MatiereInput[] = currentClassroomSubjects.map((cs) => ({
       subjectId: cs.subjectId,
       subjectName: cs.subject.name,
       coefficient: decimalVersChaine(cs.coefficient),
       effectiveFrom: cs.effectiveFrom,
       effectiveTo: cs.effectiveTo,
       evaluations: assessments
-        .filter((a) => a.classroomSubjectId === cs.id)
+        .filter(
+          (assessment) =>
+            classroomSubjectsById.get(assessment.classroomSubjectId)?.subjectId === cs.subjectId,
+        )
         .map((a) => {
           const grade = notesParCle.get(`${a.id}|${enrollment.id}`);
           return {
