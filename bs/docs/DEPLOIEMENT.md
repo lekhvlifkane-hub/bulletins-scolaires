@@ -65,6 +65,8 @@ Sans `SEED_PASSWORD`, un secret aléatoire est généré et affiché une seule f
 
 Le fichier Compose de développement n'est pas une configuration de production prête à exposer sur Internet. Préparer un hôte géré, isoler PostgreSQL sur un réseau privé, restreindre les ports entrants et mettre un proxy HTTPS (par exemple nginx ou Caddy) devant l'API.
 
+L'application Tauri distribuée utilise l'URL de production du backend ; `tauri dev` continue d'utiliser `http://localhost:4000`. Après un changement d'URL du backend, reconstruire et publier une nouvelle version desktop.
+
 ### Secrets et transport
 
 - Générer des valeurs indépendantes et aléatoires pour `POSTGRES_PASSWORD` et `SESSION_SECRET` (au moins 32 caractères). Pour le mot de passe PostgreSQL de Compose, choisir des caractères compatibles URL (par exemple une valeur hexadécimale aléatoire) ; l'injecter via le gestionnaire de secrets de l'hébergeur, jamais dans Git ni dans les journaux de déploiement.

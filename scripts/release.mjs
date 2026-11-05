@@ -56,7 +56,7 @@ for (const { fichier } of sources) {
 }
 
 execSync(
-  `git add ${sources.map((s) => s.fichier).join(' ')} && git commit -m "Version ${nouvelleVersion}"`,
+  `git add ${sources.map((s) => s.fichier).join(' ')} && git commit -m "Version ${nouvelleVersion}" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"`,
   { cwd: racine, stdio: 'inherit' },
 );
 execSync(`git tag -a ${tag} -m "${tag} — mise à jour desktop"`, { cwd: racine });
