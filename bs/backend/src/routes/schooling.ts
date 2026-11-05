@@ -8,10 +8,16 @@ import { requireAuth, requireRole, requireSchoolId } from '../middleware/auth';
 import { writeAuditLog } from '../services/audit';
 
 const router = Router();
-const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'Dates invalides' });
+const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'La date de fin doit être après la date de début' });
 const yearUpdateSchema = z.object({ name: z.string().trim().min(5).optional(), startsAt: z.coerce.date().optional(), endsAt: z.coerce.date().optional(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() });
 const namedSchema = z.object({ name: z.string().trim().min(1), sortOrder: z.number().int().optional(), levelId: z.string().optional(), code: z.string().trim().min(1).optional() });
 const classSchema = z.object({ name: z.string().trim().min(1), academicYearId: z.string(), levelId: z.string(), seriesId: z.string().nullable().optional() });
+const semesterDateSchema = z.object({
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+}).refine((value) => value.endsAt > value.startsAt, {
+  message: 'La date de fin doit être après la date de début',
+});
 const classroomSubjectSchema = z.object({
   classroomId: z.string().min(1),
   subjectId: z.string().min(1),
@@ -20,9 +26,164 @@ const classroomSubjectSchema = z.object({
 });
 router.use(requireAuth, requireRole('SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'));
 
-router.get('/years', asyncHandler(async (req,res)=>{const schoolId=requireSchoolId(req);res.json({ years: await prisma.academicYear.findMany({where:{schoolId,deletedAt:null},include:{semesters:true},orderBy:{startsAt:'desc'}})});}));
-router.post('/years', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=yearSchema.parse(req.body);const year=await prisma.academicYear.create({data:{...data,schoolId}});await prisma.semester.createMany({data:[1,2].map(number=>({academicYearId:year.id,number,name:`Semestre ${number}`,startsAt:data.startsAt,endsAt:data.endsAt}))});await writeAuditLog({req,schoolId,userId:req.currentUser!.id,action:'ACADEMIC_YEAR_CREATED',entityType:'AcademicYear',entityId:year.id});res.status(201).json({year});}));
-router.patch('/years/:id', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const year=await prisma.academicYear.findFirst({where:{id:req.params.id,schoolId,deletedAt:null}});if(!year)throw new HttpError(404,'Année introuvable');if(year.status==='CLOSED')throw new HttpError(409,"L'année scolaire est clôturée");const data=yearUpdateSchema.parse(req.body);res.json({year:await prisma.academicYear.update({where:{id:year.id},data})});}));
+router.get('/years', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const years = await prisma.academicYear.findMany({
+    where: { schoolId, deletedAt: null },
+    include: { semesters: { orderBy: { number: 'asc' } } },
+    orderBy: { startsAt: 'desc' },
+  });
+  res.json({ years });
+}));
+
+router.post('/years', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = yearSchema.parse(req.body);
+  const dureeJour = 24 * 60 * 60 * 1000;
+  const jours = Math.floor((data.endsAt.getTime() - data.startsAt.getTime()) / dureeJour) + 1;
+  if (jours < 2) throw new HttpError(400, "L'année scolaire doit durer au moins deux jours");
+  const finPremierSemestre = new Date(data.startsAt.getTime() + Math.floor(jours / 2) * dureeJour - 1);
+  const debutSecondSemestre = new Date(finPremierSemestre.getTime() + 1);
+
+  const year = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.academicYear.create({
+      data: { ...data, schoolId },
+    });
+    await transaction.semester.createMany({
+      data: [
+        {
+          academicYearId: created.id,
+          number: 1,
+          name: 'Semestre 1',
+          startsAt: data.startsAt,
+          endsAt: finPremierSemestre,
+        },
+        {
+          academicYearId: created.id,
+          number: 2,
+          name: 'Semestre 2',
+          startsAt: debutSecondSemestre,
+          endsAt: data.endsAt,
+        },
+      ],
+    });
+    return transaction.academicYear.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { semesters: { orderBy: { number: 'asc' } } },
+    });
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'ACADEMIC_YEAR_CREATED',
+    entityType: 'AcademicYear',
+    entityId: year.id,
+  });
+  res.status(201).json({ year });
+}));
+
+router.patch('/years/:id', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const year = await prisma.academicYear.findFirst({
+    where: { id: req.params.id, schoolId, deletedAt: null },
+    include: { semesters: true },
+  });
+  if (!year) throw new HttpError(404, 'Année introuvable');
+  if (year.status === 'CLOSED') throw new HttpError(409, "L'année scolaire est clôturée");
+  const data = yearUpdateSchema.parse(req.body);
+  const startsAt = data.startsAt ?? year.startsAt;
+  const endsAt = data.endsAt ?? year.endsAt;
+  if (endsAt <= startsAt) {
+    throw new HttpError(400, 'La date de fin doit être après la date de début');
+  }
+  if (data.status === 'ACTIVE') {
+    const autreAnneeActive = await prisma.academicYear.findFirst({
+      where: {
+        schoolId,
+        deletedAt: null,
+        status: 'ACTIVE',
+        id: { not: year.id },
+      },
+    });
+    if (autreAnneeActive) {
+      throw new HttpError(409, 'Clôturez ou désactivez l’année scolaire active avant d’en activer une autre');
+    }
+  }
+  if (data.startsAt || data.endsAt) {
+    const semestreHorsPeriode = year.semesters.some(
+      (semester) => semester.startsAt < startsAt || semester.endsAt > endsAt,
+    );
+    if (semestreHorsPeriode) {
+      throw new HttpError(409, 'Les dates de l’année ne peuvent pas exclure un semestre');
+    }
+  }
+  const updated = await prisma.academicYear.update({
+    where: { id: year.id },
+    data,
+    include: { semesters: { orderBy: { number: 'asc' } } },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'ACADEMIC_YEAR_UPDATED',
+    entityType: 'AcademicYear',
+    entityId: year.id,
+    metadata: data,
+  });
+  res.json({ year: updated });
+}));
+
+router.patch('/semesters/:id', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = semesterDateSchema.parse(req.body);
+  const semester = await prisma.semester.findFirst({
+    where: {
+      id: req.params.id,
+      academicYear: { schoolId, deletedAt: null },
+    },
+    include: { academicYear: true },
+  });
+  if (!semester) throw new HttpError(404, 'Semestre introuvable');
+  if (semester.academicYear.status === 'CLOSED') {
+    throw new HttpError(409, "L'année scolaire est clôturée");
+  }
+  if (
+    data.startsAt < semester.academicYear.startsAt ||
+    data.endsAt > semester.academicYear.endsAt
+  ) {
+    throw new HttpError(400, 'Les dates du semestre doivent rester dans celles de l’année scolaire');
+  }
+  const autreSemestre = await prisma.semester.findFirst({
+    where: {
+      academicYearId: semester.academicYearId,
+      number: semester.number === 1 ? 2 : 1,
+    },
+  });
+  if (
+    autreSemestre &&
+    (semester.number === 1
+      ? data.endsAt >= autreSemestre.startsAt
+      : data.startsAt <= autreSemestre.endsAt)
+  ) {
+    throw new HttpError(409, 'Les périodes des deux semestres ne peuvent pas se chevaucher');
+  }
+  const updated = await prisma.semester.update({
+    where: { id: semester.id },
+    data,
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SEMESTER_DATES_UPDATED',
+    entityType: 'Semester',
+    entityId: semester.id,
+    metadata: data,
+  });
+  res.json({ semester: updated });
+}));
 router.get('/levels', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({levels:await prisma.level.findMany({where:{schoolId,deletedAt:null},orderBy:[{sortOrder:'asc'},{name:'asc'}]})});}));
 router.post('/levels', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.parse(req.body);const level=await prisma.level.create({data:{schoolId,name:data.name,sortOrder:data.sortOrder??0}});res.status(201).json({level});}));
 router.get('/series', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({series:await prisma.series.findMany({where:{schoolId,deletedAt:null},include:{level:true},orderBy:{name:'asc'}})});}));
