@@ -6,34 +6,34 @@
     --brand-navy: 210 75.56% 17.65%;
     --brand-emerald: 158.33 86.75% 32.55%;
     --brand-gold: 42.11 75.59% 58.24%;
-    --background: 0 0% 100%;
+    --background: 150 18% 97%;
     --foreground: var(--brand-navy);
     --card: 0 0% 100%;
     --card-foreground: var(--brand-navy);
     --popover: 0 0% 100%;
     --popover-foreground: var(--brand-navy);
-    --primary: 158 88% 26%;
+    --primary: var(--brand-emerald);
     --primary-foreground: 0 0% 100%;
     --secondary: var(--brand-navy);
     --secondary-foreground: 0 0% 100%;
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 14% 42%;
+    --muted: 150 14% 94%;
+    --muted-foreground: 213 12% 43%;
     --accent: var(--brand-gold);
     --accent-foreground: var(--brand-navy);
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 24% 89%;
-    --input: 214 24% 89%;
-    --ring: 158 88% 26%;
+    --border: 210 18% 88%;
+    --input: 210 18% 84%;
+    --ring: var(--brand-emerald);
     --radius: 0.75rem;
     --sidebar: var(--brand-navy);
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 208 55% 26%;
+    --sidebar-accent: 208 46% 25%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 208 45% 30%;
-    --sidebar-ring: 158 88% 26%;
+    --sidebar-border: 208 35% 31%;
+    --sidebar-ring: var(--brand-emerald);
   }
 
   * {
@@ -44,5 +44,99 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "ss01" on, "cv11" on;
     font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  }
+
+  ::selection {
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.38) transparent;
+    scrollbar-width: thin;
+  }
+
+  .app-main > div > header > h1 {
+    color: hsl(var(--foreground));
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+  }
+
+  .app-main select,
+  .app-main textarea {
+    border-color: hsl(var(--input));
+    border-radius: 0.625rem;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .app-main select:not([aria-label^="Statut de la note"]) {
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+  }
+
+  .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+    border-color: hsl(var(--input));
+    border-radius: 0.625rem;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .app-main textarea {
+    min-height: 6rem;
+    padding: 0.625rem 0.75rem;
+  }
+
+  .app-main select:hover,
+  .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
+  .app-main textarea:hover {
+    border-color: hsl(var(--brand-emerald) / 0.55);
+  }
+
+  .app-main select:focus-visible,
+  .app-main input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus-visible,
+  .app-main textarea:focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.35);
+    outline-offset: 1px;
+    border-color: hsl(var(--ring));
+  }
+
+  .app-main input[type="checkbox"],
+  .app-main input[type="radio"] {
+    accent-color: hsl(var(--primary));
+  }
+
+  .app-main [role="tablist"] button[aria-selected="true"] {
+    color: hsl(var(--primary));
+    font-weight: 650;
+  }
+
+  .app-main [data-slot="table"] {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .app-main [data-slot="table-header"] [data-slot="table-head"] {
+    background-color: hsl(var(--muted) / 0.7);
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.025em;
+  }
+
+  .app-main [data-slot="table-body"] [data-slot="table-row"]:hover {
+    background-color: hsl(var(--primary) / 0.035);
+  }
+
+  @media (max-width: 640px) {
+    .app-main > div > header > h1 {
+      font-size: 1.5rem;
+    }
   }
 }

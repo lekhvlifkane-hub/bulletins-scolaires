@@ -42,12 +42,12 @@ export function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f5f7f8] lg:grid lg:grid-cols-[1.05fr_0.95fr]">
-      <section className="relative isolate flex min-h-[300px] flex-col overflow-hidden bg-[#102e4a] px-6 py-8 text-white sm:px-10 lg:min-h-screen lg:px-16 lg:py-12">
+    <main className="min-h-screen bg-background lg:grid lg:grid-cols-[1.05fr_0.95fr]">
+      <section className="relative isolate flex min-h-[300px] flex-col overflow-hidden bg-brand-navy px-6 py-8 text-white sm:px-10 lg:min-h-screen lg:px-16 lg:py-12">
         <div aria-hidden="true" className="absolute -right-36 -top-32 -z-10 h-[34rem] w-[34rem] rounded-full border-[74px] border-white/[0.035]" />
-        <div aria-hidden="true" className="absolute -bottom-36 -left-20 -z-10 h-96 w-96 rounded-full bg-[#13865f]/20 blur-3xl" />
+        <div aria-hidden="true" className="absolute -bottom-36 -left-20 -z-10 h-96 w-96 rounded-full bg-brand-emerald/20 blur-3xl" />
         <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm">
             <img src="/logo.svg" alt="Bulletins Scolaires" className="h-9 w-9" />
           </span>
           <span>
@@ -57,23 +57,23 @@ export function LoginPage() {
         </div>
 
         <div className="my-auto max-w-xl py-10 lg:py-16">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white/80">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-xs font-medium text-white/85">
             <GraduationCap aria-hidden="true" className="h-4 w-4 text-emerald-300" />
             La gestion scolaire en toute simplicité
           </div>
           <h1 className="max-w-lg text-3xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
             Chaque élève mérite un parcours qui compte.
           </h1>
-          <p className="mt-5 max-w-lg text-sm leading-7 text-blue-100/70 sm:text-base">
+          <p className="mt-5 max-w-lg text-sm leading-7 text-white/75 sm:text-base">
             Notes, bulletins et vie scolaire réunis dans un espace clair, pensé pour accompagner les établissements au quotidien.
           </p>
-          <div className="mt-9 grid max-w-md gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+          <div className="mt-9 hidden max-w-md gap-3 sm:grid sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
               <BookOpenCheck aria-hidden="true" className="mb-3 h-5 w-5 text-emerald-300" />
               <p className="text-sm font-semibold">Suivi pédagogique</p>
               <p className="mt-1 text-xs leading-5 text-white/55">Des informations utiles, au même endroit.</p>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+            <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
               <ShieldCheck aria-hidden="true" className="mb-3 h-5 w-5 text-emerald-300" />
               <p className="text-sm font-semibold">Accès sécurisé</p>
               <p className="mt-1 text-xs leading-5 text-white/55">Un espace adapté à chaque rôle.</p>
@@ -89,18 +89,17 @@ export function LoginPage() {
 
       <section className="flex items-center justify-center px-4 py-10 sm:px-8 lg:px-12">
         <div className="w-full max-w-[430px]">
-          <div className="rounded-[1.75rem] border border-slate-200/80 bg-white p-6 shadow-[0_16px_50px_rgba(16,46,74,0.08)] sm:p-9">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-[0_16px_50px_rgb(16_46_74/0.08)] sm:p-9">
             <div className="mb-8">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#18835a]">Bienvenue</p>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#153653]">Connexion</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              <h2 className="text-2xl font-bold tracking-tight text-foreground">Connexion</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 Accédez à votre espace Bulletins Scolaires.
               </p>
             </div>
 
             <form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700" htmlFor="email">
+                <label className="text-sm font-semibold text-foreground" htmlFor="email">
                   Adresse e-mail
                 </label>
                 <input
@@ -108,7 +107,7 @@ export function LoginPage() {
                   type="email"
                   autoComplete="username"
                   placeholder="nom@etablissement.sn"
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  className="mt-1 h-11 w-full rounded-lg border border-input bg-card px-3.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground hover:border-primary/50 focus:border-primary focus:ring-4 focus:ring-primary/10"
                   {...register('email')}
                 />
                 {errors.email && (
@@ -117,10 +116,10 @@ export function LoginPage() {
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold text-slate-700" htmlFor="password">
+                  <label className="text-sm font-semibold text-foreground" htmlFor="password">
                     Mot de passe
                   </label>
-                  <Link to="/mot-de-passe-oublie" className="text-xs font-semibold text-[#16845a] hover:text-[#106a47] hover:underline">
+                  <Link to="/mot-de-passe-oublie" className="text-xs font-semibold text-primary underline-offset-4 hover:underline">
                     Mot de passe oublié ?
                   </Link>
                 </div>
@@ -128,7 +127,7 @@ export function LoginPage() {
                   id="password"
                   type="password"
                   autoComplete="current-password"
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 text-sm text-slate-900 outline-none transition hover:border-slate-300 focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  className="mt-1 h-11 w-full rounded-lg border border-input bg-card px-3.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground hover:border-primary/50 focus:border-primary focus:ring-4 focus:ring-primary/10"
                   {...register('password')}
                 />
                 {errors.password && (
@@ -142,7 +141,7 @@ export function LoginPage() {
               )}
               <Button
                 type="submit"
-                className="h-12 w-full rounded-xl bg-[#147b55] text-sm font-semibold shadow-[0_5px_12px_rgba(20,123,85,0.18)] hover:bg-[#106a49]"
+                className="h-11 w-full rounded-lg text-sm font-semibold shadow-sm"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Connexion...' : 'Se connecter'}
@@ -150,15 +149,15 @@ export function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-7 border-t border-slate-100 pt-6 text-center">
-              <p className="text-sm text-slate-500">Votre établissement n’est pas encore inscrit ?</p>
-              <Link to="/inscription-etablissement" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#16845a] hover:text-[#106a47] hover:underline">
+            <div className="mt-7 border-t border-border pt-6 text-center">
+              <p className="text-sm text-muted-foreground">Votre établissement n’est pas encore inscrit ?</p>
+              <Link to="/inscription-etablissement" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary underline-offset-4 hover:underline">
                 Inscrire mon établissement
                 <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
               </Link>
             </div>
           </div>
-          <p className="mt-5 text-center text-xs text-slate-400">
+          <p className="mt-5 text-center text-xs text-muted-foreground">
             Besoin d’aide ? Contactez l’administrateur de votre établissement.
           </p>
         </div>

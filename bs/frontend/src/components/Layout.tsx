@@ -70,12 +70,12 @@ function Navigation({ groups, compact = false }: { groups: LinkGroup[]; compact?
                   `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${
                     compact
                       ? isActive
-                        ? 'bg-primary/10 text-foreground'
+                        ? 'bg-white text-brand-navy shadow-sm'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       : isActive
-                        ? 'bg-white text-brand-navy shadow-sm'
+                        ? 'bg-white/12 text-white shadow-sm ring-1 ring-inset ring-white/10'
                         : 'text-white/75 hover:bg-white/10 hover:text-white'
-                  } ${compact ? 'gap-2 px-3 py-2' : ''}`
+                  } ${compact ? 'gap-2 px-3 py-2' : 'min-h-10'}`
                 }
               >
                 {({ isActive }) => (
@@ -84,7 +84,7 @@ function Navigation({ groups, compact = false }: { groups: LinkGroup[]; compact?
                       aria-hidden="true"
                       className={`h-[18px] w-[18px] shrink-0 ${
                         isActive || compact
-                          ? 'text-primary'
+                          ? compact ? 'text-primary' : 'text-emerald-300'
                           : 'text-white/60 group-hover:text-white'
                       }`}
                     />
@@ -206,13 +206,13 @@ export function Layout() {
   return (
     <SidebarProvider className="min-h-screen bg-background text-foreground">
       <Sidebar collapsible="none" role="complementary" aria-label="Navigation de l’établissement" className="hidden min-h-screen bg-sidebar px-4 py-6 text-sidebar-foreground md:hidden lg:flex">
-        <SidebarHeader className="mb-5 flex-row items-center gap-3 px-2 py-0">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
-            <img src="/logo.svg" alt="" className="h-8 w-8" />
+        <SidebarHeader className="mb-7 flex-row items-center gap-3 border-b border-white/10 px-2 pb-5 pt-1">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm">
+            <img src="/logo.svg" alt="" className="h-7 w-7" />
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-bold tracking-wide">Bulletins Scolaires</p>
-            <p className="mt-0.5 truncate text-xs text-sidebar-foreground/65">{school?.name ?? 'Espace plateforme'}</p>
+            <p className="text-sm font-bold tracking-tight">Bulletins Scolaires</p>
+            <p className="mt-1 truncate text-xs text-sidebar-foreground/65">{school?.name ?? 'Espace plateforme'}</p>
           </div>
         </SidebarHeader>
         <SidebarContent className="min-h-0 flex-1 overflow-y-auto px-0 py-2 pr-1">
@@ -224,12 +224,12 @@ export function Layout() {
             Espace sécurisé
           </div>
           {account(true)}
-          <p className="px-2 pt-3 text-[10px] text-sidebar-foreground/50">Bulletins Scolaires · Gestion scolaire</p>
+          <p className="px-2 pt-3 text-[10px] text-sidebar-foreground/50">Gestion scolaire</p>
         </SidebarFooter>
       </Sidebar>
 
       <div className="min-w-0 flex-1 overflow-x-clip">
-        <header className="sticky top-0 z-20 border-b border-border bg-background px-4 py-3 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-20 border-b border-border/80 bg-card px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-h-11 items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 lg:hidden">
@@ -254,7 +254,7 @@ export function Layout() {
           <div className="min-w-max"><Navigation groups={groups} compact /></div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-7 sm:px-6 sm:py-8 lg:px-9 lg:py-10">
+        <main className="app-main mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10 lg:py-9">
           <Outlet />
         </main>
       </div>
