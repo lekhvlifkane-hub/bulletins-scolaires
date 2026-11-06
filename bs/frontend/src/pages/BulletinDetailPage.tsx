@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Table } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LIBELLES_FORMULE_MATIERE,
@@ -153,7 +157,7 @@ export function BulletinDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">
             Bulletin {snapshot.enTete.semestre.nom} — {snapshot.eleve.nom} {snapshot.eleve.prenoms}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -172,26 +176,33 @@ export function BulletinDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => void imprimer()} disabled={enCours}>
+          <Button onClick={() => void imprimer()} disabled={enCours}>
+            <Download aria-hidden="true" className="h-4 w-4" />
             Imprimer en PDF
           </Button>
-          <Link
-            className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
+          <Button variant="outline" size="sm" asChild>
+            <Link
             to={`/comparaison-semestres?classroomId=${snapshot.eleve.classroomId}&enrollmentId=${snapshot.eleve.enrollmentId}&academicYearId=${bulletin.academicYearId}`}
-          >
-            Comparer S1 / S2
-          </Link>
-          <Link
-            className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
-            to="/bulletins"
-          >
-            Retour
-          </Link>
+            >
+              Comparer S1 / S2
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/bulletins">Retour</Link>
+          </Button>
         </div>
       </div>
 
-      {erreur ? <p className="text-sm text-destructive">{erreur}</p> : null}
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+      {erreur ? (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {erreur}
+        </p>
+      ) : null}
+      {message ? (
+        <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">
+          {message}
+        </p>
+      ) : null}
 
       {snapshot.motifs.length > 0 || bulletin.motifNonClasse ? (
         <ul className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -202,8 +213,8 @@ export function BulletinDetailPage() {
         </ul>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+      <Card className="gap-0 overflow-hidden border-border py-0 shadow-sm">
+        <Table className="text-sm">
           <thead className="bg-muted/50">
             <tr>
               <th className="p-3 text-left">Discipline</th>
@@ -217,13 +228,15 @@ export function BulletinDetailPage() {
           <tbody>
             {snapshot.matieres.map((matiere) => (
               <tr key={matiere.subjectId} className="border-t border-border align-top">
-                <td className="p-3">
+                <td className="whitespace-normal p-3">
                   <span className="font-medium">{matiere.subjectName}</span>
                   {!matiere.comptabilisee ? (
                     <span className="ml-1 text-xs text-muted-foreground">(non comptabilisée)</span>
                   ) : null}
                   {matiere.incomplet ? (
-                    <span className="ml-1 text-xs text-accent-foreground">incomplète</span>
+                    <span className="ml-1 rounded-full bg-accent/25 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      incomplète
+                    </span>
                   ) : null}
                   {matiere.motifs.length > 0 ? (
                     <p className="text-xs text-muted-foreground">{matiere.motifs.join(' · ')}</p>
@@ -250,7 +263,7 @@ export function BulletinDetailPage() {
                   {matiere.pointsPonderes ?? '—'}
                 </td>
                 <td className="p-3 text-right">{matiere.rang ?? '—'}</td>
-                <td className="p-3">
+                <td className="min-w-52 whitespace-normal p-3">
                   {matiere.groupes.length === 0 ? (
                     <span className="text-muted-foreground">Aucune évaluation retenue</span>
                   ) : (
@@ -272,7 +285,7 @@ export function BulletinDetailPage() {
           </tbody>
           <tfoot className="bg-muted/30">
             <tr>
-              <td className="p-3">
+              <td className="whitespace-normal p-3">
                 <span className="font-medium">Moyenne générale</span>{' '}
                 <span className="text-xs text-muted-foreground">
                   {snapshot.synthese.totalPoints} pts / {snapshot.synthese.totalCoeficients} coef ·
@@ -300,8 +313,8 @@ export function BulletinDetailPage() {
               </td>
             </tr>
           </tfoot>
-        </table>
-      </div>
+        </Table>
+      </Card>
 
       {snapshot.continuite.semestrePrecedent ? (
         <div className="rounded-lg border border-border p-4 text-sm">
@@ -342,8 +355,8 @@ export function BulletinDetailPage() {
             <>
               <label className="block text-sm">
                 <span className="text-muted-foreground">Mention</span>
-                <input
-                  className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+                <Input
+                  className="mt-1 h-11"
                   value={champs.mention}
                   maxLength={120}
                   onChange={(event) => setChamps({ ...champs, mention: event.target.value })}
@@ -352,7 +365,7 @@ export function BulletinDetailPage() {
               <label className="block text-sm">
                 <span className="text-muted-foreground">Appréciation générale</span>
                 <textarea
-                  className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
                   rows={3}
                   maxLength={500}
                   value={champs.appreciation}
@@ -409,8 +422,8 @@ export function BulletinDetailPage() {
                 <span className="text-muted-foreground">
                   Motif de la correction (obligatoire, 3 caractères minimum)
                 </span>
-                <input
-                  className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+                <Input
+                  className="mt-1 h-11"
                   value={motif}
                   maxLength={300}
                   placeholder="Ex. : note de composition régularisée après vérification"

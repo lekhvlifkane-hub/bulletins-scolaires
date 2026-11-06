@@ -182,7 +182,7 @@ test.beforeEach(async ({ page }) => {
 
 test('dashboard → enregistrer une absence depuis la vie scolaire', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Bonjour Awa Ndiaye' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Bonjour, Awa' })).toBeVisible();
   await expect(page.getByText('Bulletins générés')).toBeVisible();
   await expect(page.getByRole('img', { name: 'Graphique des bulletins générés et publiés par semestre' })).toBeVisible();
 

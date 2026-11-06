@@ -1,29 +1,39 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 210 55% 18%;
+    --brand-navy: 210 75.56% 17.65%;
+    --brand-emerald: 158.33 86.75% 32.55%;
+    --brand-gold: 42.11 75.59% 58.24%;
+    --background: 0 0% 100%;
+    --foreground: var(--brand-navy);
     --card: 0 0% 100%;
-    --card-foreground: 210 55% 18%;
+    --card-foreground: var(--brand-navy);
     --popover: 0 0% 100%;
-    --popover-foreground: 210 55% 18%;
-    --primary: 210 63% 23%;
+    --popover-foreground: var(--brand-navy);
+    --primary: 158 88% 26%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 157 74% 32%;
+    --secondary: var(--brand-navy);
     --secondary-foreground: 0 0% 100%;
-    --muted: 210 18% 95%;
-    --muted-foreground: 215 14% 44%;
-    --accent: 42 78% 58%;
-    --accent-foreground: 210 76% 18%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 14% 42%;
+    --accent: var(--brand-gold);
+    --accent-foreground: var(--brand-navy);
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --border: 214 24% 89%;
     --input: 214 24% 89%;
-    --ring: 157 74% 32%;
-    --radius: 0.85rem;
+    --ring: 158 88% 26%;
+    --radius: 0.75rem;
+    --sidebar: var(--brand-navy);
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 208 55% 26%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 208 45% 30%;
+    --sidebar-ring: 158 88% 26%;
   }
 
   * {
@@ -33,5 +43,6 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "ss01" on, "cv11" on;
+    font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
   }
 }

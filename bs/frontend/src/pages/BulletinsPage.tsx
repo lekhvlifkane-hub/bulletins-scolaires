@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import { chargerAnnees, chargerClasses, type Classe, type YearSemestre } from '@/lib/notes';
 import {
@@ -188,76 +197,78 @@ export function BulletinsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Bulletins scolaires</h1>
-        <p className="text-sm text-muted-foreground">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">Bulletins scolaires</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Moyennes, rangs et mentions viennent du serveur et sont figés dans le bulletin. Un bulletin
           publié ne se recalcule plus : une correction passe par une nouvelle version.
         </p>
-      </div>
+      </header>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-4">
-        <label className="text-sm">
-          <span className="text-muted-foreground">Classe</span>
-          <select
-            className="mt-1 block rounded-md border border-input px-2 py-2 text-sm"
-            value={classroomId}
-            onChange={(event) => setClassroomId(event.target.value)}
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="text-muted-foreground">Semestre</span>
-          <select
-            className="mt-1 block rounded-md border border-input px-2 py-2 text-sm"
-            value={semesterId}
-            onChange={(event) => setSemesterId(event.target.value)}
-          >
-            {semestres.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>
+      <Card className="gap-0 border-border py-0 shadow-sm">
+        <CardContent className="flex flex-wrap items-end gap-3 p-4">
+          <label className="min-w-0 text-sm">
+            <span className="text-muted-foreground">Classe</span>
+            <select
+              className="mt-1 block h-11 w-full max-w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20 sm:w-auto"
+              value={classroomId}
+              onChange={(event) => setClassroomId(event.target.value)}
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-0 text-sm">
+            <span className="text-muted-foreground">Semestre</span>
+            <select
+              className="mt-1 block h-11 w-full max-w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20 sm:w-auto"
+              value={semesterId}
+              onChange={(event) => setSemesterId(event.target.value)}
+            >
+              {semestres.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="flex h-11 items-center text-sm text-muted-foreground">
             {liste ? `${liste.semestre.anneeScolaire} · ${liste.semestre.nom}` : '—'}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
-            to={
-              classroomId && classe
-                ? `/comparaison-semestres?classroomId=${classroomId}&academicYearId=${classe.academicYear.id}`
-                : '/comparaison-semestres'
-            }
-          >
-            Comparaison S1 / S2
-          </Link>
-          <Link
-            className="rounded-md border border-input px-3 py-2 text-sm hover:bg-muted"
-            to={
-              classroomId && classe
-                ? `/bilan-annuel?classroomId=${classroomId}&academicYearId=${classe.academicYear.id}`
-                : '/bilan-annuel'
-            }
-          >
-            Bilan annuel
-          </Link>
-        </div>
-      </div>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link
+                to={
+                  classroomId && classe
+                    ? `/comparaison-semestres?classroomId=${classroomId}&academicYearId=${classe.academicYear.id}`
+                    : '/comparaison-semestres'
+                }
+              >
+                Comparaison S1 / S2
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <Link
+                to={
+                  classroomId && classe
+                    ? `/bilan-annuel?classroomId=${classroomId}&academicYearId=${classe.academicYear.id}`
+                    : '/bilan-annuel'
+                }
+              >
+                Bilan annuel
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-2">
         {peutEditer ? (
           <>
-            <Button size="sm" onClick={() => void surGenererClasse()} disabled={enCours || !semesterId}>
+            <Button onClick={() => void surGenererClasse()} disabled={enCours || !semesterId}>
               Générer toute la classe
             </Button>
             <Button
@@ -289,17 +300,29 @@ export function BulletinsPage() {
         ) : null}
       </div>
 
-      {erreur ? <p className="text-sm text-destructive">{erreur}</p> : null}
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {etat === 'chargement' ? <p className="text-sm text-muted-foreground">Chargement…</p> : null}
+      {erreur ? (
+        <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {erreur}
+        </p>
+      ) : null}
+      {message ? (
+        <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">
+          {message}
+        </p>
+      ) : null}
+      {etat === 'chargement' ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          Chargement…
+        </p>
+      ) : null}
 
       {liste ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
+        <Card className="gap-0 overflow-hidden border-border py-0 shadow-sm">
+          <Table className="text-sm">
+            <TableHeader className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableRow className="hover:bg-transparent">
                 {peutEditer ? (
-                  <th className="p-3 text-left">
+                  <TableHead className="h-12 px-3">
                     <input
                       type="checkbox"
                       aria-label="Tout sélectionner"
@@ -310,32 +333,32 @@ export function BulletinsPage() {
                       }
                       onChange={(event) => cocherTout(event.target.checked)}
                     />
-                  </th>
+                  </TableHead>
                 ) : null}
-                <th className="p-3 text-left">Matricule</th>
-                <th className="p-3 text-left">Élève</th>
-                <th className="p-3 text-left">Statut</th>
-                <th className="p-3 text-right">Moyenne générale</th>
-                <th className="p-3 text-right">Rang</th>
-                <th className="p-3 text-right">Moyenne de classe</th>
-                <th className="p-3 text-left">Version</th>
-                <th className="p-3 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+                <TableHead className="h-12 px-3">Matricule</TableHead>
+                <TableHead className="h-12 px-3">Élève</TableHead>
+                <TableHead className="h-12 px-3">Statut</TableHead>
+                <TableHead className="h-12 px-3 text-right">Moyenne générale</TableHead>
+                <TableHead className="h-12 px-3 text-right">Rang</TableHead>
+                <TableHead className="h-12 px-3 text-right">Moyenne de classe</TableHead>
+                <TableHead className="h-12 px-3">Version</TableHead>
+                <TableHead className="h-12 px-3">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {lignes.length === 0 ? (
-                <tr>
-                  <td colSpan={peutEditer ? 9 : 8} className="p-3 text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={peutEditer ? 9 : 8} className="h-24 px-3 text-center text-muted-foreground">
                     Aucun élève actif dans cette classe.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 lignes.map((ligne) => {
                   const bulletin = ligne.bulletin;
                   return (
-                    <tr key={ligne.enrollmentId} className="border-t border-border align-top">
+                    <TableRow key={ligne.enrollmentId} className="align-top">
                       {peutEditer ? (
-                        <td className="p-3">
+                        <TableCell className="px-3 py-3">
                           <input
                             type="checkbox"
                             aria-label={`Sélectionner ${ligne.nom}`}
@@ -344,30 +367,29 @@ export function BulletinsPage() {
                             checked={Boolean(bulletin) && selection.includes(ligne.enrollmentId)}
                             onChange={() => basculer(ligne.enrollmentId)}
                           />
-                        </td>
+                        </TableCell>
                       ) : null}
-                      <td className="p-3">{ligne.matricule}</td>
-                      <td className="p-3">
+                      <TableCell className="px-3 py-3 font-mono text-xs">{ligne.matricule}</TableCell>
+                      <TableCell className="whitespace-normal px-3 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            className="hover:underline"
-                            to={`/eleves/${ligne.studentId}`}
-                          >
+                          <Link className="font-semibold text-foreground hover:underline" to={`/eleves/${ligne.studentId}`}>
                             {ligne.nom} {ligne.prenoms}
                           </Link>
                           {bulletin?.incomplet ? (
-                            <span className="text-xs text-accent-foreground">bulletin incomplet</span>
+                            <span className="rounded-full bg-accent/25 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              bulletin incomplet
+                            </span>
                           ) : null}
                         </div>
                         {bulletin && bulletin.motifs.length > 0 ? (
-                          <p className="text-xs text-muted-foreground">{bulletin.motifs.join(' · ')}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{bulletin.motifs.join(' · ')}</p>
                         ) : null}
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="px-3 py-3">
                         {bulletin ? LIBELLES_STATUT_BULLETIN[bulletin.statut] : 'Aucun bulletin'}
-                      </td>
-                      <td
-                        className="p-3 text-right font-medium"
+                      </TableCell>
+                      <TableCell
+                        className="px-3 py-3 text-right font-medium"
                         title={
                           bulletin?.moyenneGeneraleExacte
                             ? `Valeur exacte : ${bulletin.moyenneGeneraleExacte}`
@@ -379,36 +401,33 @@ export function BulletinsPage() {
                             bulletin.moyenneGenerale ??
                             'Non calculable'
                           : '—'}
-                      </td>
-                      <td className="p-3 text-right">
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-right">
                         {bulletin?.rang ?? '—'}
                         {bulletin?.motifNonClasse ? (
                           <p className="text-xs text-muted-foreground">{bulletin.motifNonClasse}</p>
                         ) : null}
-                      </td>
-                      <td className="p-3 text-right text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-right text-muted-foreground">
                         {bulletin
                           ? bulletin.moyenneClasseAffichee ?? bulletin.moyenneClasse ?? '—'
                           : '—'}
                         {bulletin ? (
                           <span className="text-xs"> (effectif {bulletin.effectif})</span>
                         ) : null}
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="whitespace-normal px-3 py-3 text-xs text-muted-foreground">
                         {bulletin ? `v${bulletin.version} · ${dateCourte(bulletin.genereLe)}` : '—'}
                         {bulletin?.motifCorrection ? (
                           <p className="text-muted-foreground">Motif : {bulletin.motifCorrection}</p>
                         ) : null}
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="px-3 py-3">
                         <div className="flex flex-wrap gap-2">
                           {bulletin ? (
-                            <Link
-                              className="rounded-md border border-input px-2 py-1 text-xs hover:bg-muted"
-                              to={`/bulletins/${bulletin.id}`}
-                            >
-                              Ouvrir
-                            </Link>
+                            <Button asChild size="sm" variant="outline" className="h-8 px-2 text-xs">
+                              <Link to={`/bulletins/${bulletin.id}`}>Ouvrir</Link>
+                            </Button>
                           ) : null}
                           {peutEditer ? (
                             <Button
@@ -429,14 +448,14 @@ export function BulletinsPage() {
                             </Button>
                           ) : null}
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })
               )}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+        </Card>
       ) : null}
 
       <p className="text-xs text-muted-foreground">

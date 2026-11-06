@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { NotesGrid } from '@/components/NotesGrid';
 import {
   ErreurSaisie,
@@ -220,18 +222,19 @@ export function NotesEntryPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Saisie des notes</h1>
-        <p className="text-sm text-muted-foreground">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">Saisie des notes</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Grille clavier, enregistrement explicite. Les moyennes ne sont jamais calculées ici.
         </p>
-      </div>
+      </header>
 
-      <div className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-4">
+      <Card className="gap-0 border-border py-0 shadow-sm">
+        <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
         <label className="text-sm">
           <span className="text-muted-foreground">Classe</span>
           <select
-            className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             value={classroomId}
             onChange={(event) => setClassroomId(event.target.value)}
           >
@@ -247,7 +250,7 @@ export function NotesEntryPage() {
         <label className="text-sm">
           <span className="text-muted-foreground">Semestre</span>
           <select
-            className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             value={semesterId}
             onChange={(event) => setSemesterId(event.target.value)}
           >
@@ -263,7 +266,7 @@ export function NotesEntryPage() {
         <label className="text-sm">
           <span className="text-muted-foreground">Discipline</span>
           <select
-            className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             value={affectationId}
             onChange={(event) => setAffectationId(event.target.value)}
           >
@@ -279,7 +282,7 @@ export function NotesEntryPage() {
         <label className="text-sm">
           <span className="text-muted-foreground">Évaluation</span>
           <select
-            className="mt-1 w-full rounded-md border border-input px-2 py-2 text-sm"
+            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             value={assessmentId}
             onChange={(event) => setAssessmentId(event.target.value)}
           >
@@ -291,13 +294,18 @@ export function NotesEntryPage() {
             ))}
           </select>
         </label>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-4">
+      <Card className="gap-0 border-border py-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Créer une évaluation</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           <span className="text-muted-foreground">Nouvelle évaluation</span>
-          <input
-            className="mt-1 block w-56 rounded-md border border-input px-2 py-2 text-sm"
+          <Input
+            className="mt-1 h-11 w-56"
             placeholder="Titre (ex. Devoir 1)"
             value={nouveauTitre}
             onChange={(event) => setNouveauTitre(event.target.value)}
@@ -306,7 +314,7 @@ export function NotesEntryPage() {
         <label className="text-sm">
           <span className="text-muted-foreground">Type</span>
           <select
-            className="mt-1 block rounded-md border border-input px-2 py-2 text-sm"
+            className="mt-1 block h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
             value={nouveauType}
             onChange={(event) => setNouveauType(event.target.value)}
           >
@@ -320,7 +328,8 @@ export function NotesEntryPage() {
         <Button variant="outline" onClick={creer}>
           Créer
         </Button>
-      </div>
+        </CardContent>
+      </Card>
 
       {!grille ? (
         <p className="text-sm text-muted-foreground">
@@ -328,8 +337,8 @@ export function NotesEntryPage() {
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3">
+            <p className="text-sm text-foreground">
               <span className="font-medium">{grille.titre}</span> — barème {grille.bareme} —{' '}
               {LIBELLES_STATUT_EVALUATION[grille.statut as keyof typeof LIBELLES_STATUT_EVALUATION]}
             </p>
@@ -346,14 +355,14 @@ export function NotesEntryPage() {
           </div>
 
           {!grille.saisieAutorisee ? (
-            <p className="rounded-md border border-accent bg-accent/10 p-3 text-sm">
+            <p className="rounded-lg border border-accent/60 bg-accent/15 p-3 text-sm text-foreground">
               Saisie fermée : cette évaluation est « {grille.statut.toLowerCase()} ». Un surveillant
               général ou l'administrateur doit la ramener en « À vérifier » pour corriger.
             </p>
           ) : null}
 
-          {message ? <p className="text-sm text-secondary">{message}</p> : null}
-          {erreurGlobale ? <p className="text-sm text-destructive">{erreurGlobale}</p> : null}
+          {message ? <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">{message}</p> : null}
+          {erreurGlobale ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{erreurGlobale}</p> : null}
 
           <NotesGrid
             lignes={lignesAffichees}

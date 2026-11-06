@@ -3,6 +3,16 @@ import { Download, FileUp, Search, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 type StudentCsvData = {
   matricule: string;
@@ -72,7 +82,7 @@ const headers = [
 ];
 
 const inputClass =
-  'h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10';
+  'h-11 w-full rounded-lg border-border bg-background px-3 text-sm text-foreground focus-visible:border-primary focus-visible:ring-primary/20';
 
 function normalizeHeader(value: string) {
   return value
@@ -399,9 +409,8 @@ export function StudentsPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-emerald-700">Scolarité</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Élèves</h1>
-          <p className="mt-2 text-sm text-slate-500">Gestion, import et export des dossiers élèves.</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">Élèves</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Gestion, import et export des dossiers élèves.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={downloadTemplate}>Télécharger le modèle CSV</Button>
@@ -412,88 +421,87 @@ export function StudentsPage() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7">
-        <h2 className="mb-4 font-bold text-slate-800">Créer un élève</h2>
-        <form
-          onSubmit={(event) => void create(event)}
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
-        >
-          <input
-            required
-            aria-label="Matricule"
-            placeholder="Matricule"
-            className={inputClass}
-            value={form.matricule}
-            onChange={(event) => setForm({ ...form, matricule: event.target.value })}
-          />
-          <input
-            required
-            aria-label="Nom"
-            placeholder="Nom"
-            className={inputClass}
-            value={form.lastName}
-            onChange={(event) => setForm({ ...form, lastName: event.target.value })}
-          />
-          <input
-            required
-            aria-label="Prénoms"
-            placeholder="Prénoms"
-            className={inputClass}
-            value={form.firstNames}
-            onChange={(event) => setForm({ ...form, firstNames: event.target.value })}
-          />
-          <Button type="submit">Créer</Button>
-        </form>
-      </section>
+      <Card className="gap-0 border-border shadow-sm">
+        <CardHeader>
+          <CardTitle>Créer un élève</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(event) => void create(event)}
+            className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
+          >
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Matricule
+              <Input required aria-label="Matricule" placeholder="Ex. EL-2026-001" className={inputClass}
+                value={form.matricule} onChange={(event) => setForm({ ...form, matricule: event.target.value })} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Nom
+              <Input required aria-label="Nom" placeholder="Nom de famille" className={inputClass}
+                value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Prénoms
+              <Input required aria-label="Prénoms" placeholder="Prénom(s)" className={inputClass}
+                value={form.firstNames} onChange={(event) => setForm({ ...form, firstNames: event.target.value })} />
+            </label>
+            <Button type="submit" className="h-11 px-5">Créer</Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7">
-        <div className="mb-4 flex items-center gap-2">
-          <FileUp aria-hidden="true" className="h-5 w-5 text-emerald-700" />
-          <h2 className="font-bold text-slate-800">Importer depuis un CSV</h2>
-        </div>
-        <p className="mb-4 text-sm text-slate-500">
-          Fichier UTF-8 de 5 Mo maximum. Les colonnes matricule, nom et prénoms sont obligatoires.
-          Les matricules déjà enregistrés ou répétés dans le fichier seront ignorés.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".csv,text/csv"
-            aria-label="Fichier CSV des élèves"
-            className="max-w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold"
-            onChange={(event) => void selectCsv(event)}
-          />
-          {preview && (
-            <Button type="button" onClick={() => void importCsv()} disabled={importing || previewCounts.valid === 0}>
-              {importing ? 'Import en cours…' : `Importer ${previewCounts.valid} ligne(s) valide(s)`}
-            </Button>
-          )}
-        </div>
-        {preview && (
-          <div className="mt-4 space-y-3">
-            <p role="status" className="text-sm text-slate-700">
-              Aperçu : {previewCounts.valid} ligne(s) prêtes, {previewCounts.skipped} ligne(s) à ignorer.
-            </p>
-            {preview.filter((row) =>
-              row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
-            ).length > 0 && (
-              <ul className="max-h-40 space-y-1 overflow-y-auto rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
-                {preview.filter((row) =>
-                  row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
-                ).map((row) => (
-                  <li key={row.line}>
-                    Ligne {row.line} — {row.error ?? `Matricule ${row.data?.matricule} déjà présent`}
-                  </li>
-                ))}
-              </ul>
+      <Card className="gap-0 border-border shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileUp aria-hidden="true" className="h-5 w-5 text-primary" />
+            Importer depuis un CSV
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Fichier UTF-8 de 5 Mo maximum. Les colonnes matricule, nom et prénoms sont obligatoires.
+            Les matricules déjà enregistrés ou répétés dans le fichier seront ignorés.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              ref={fileInput}
+              type="file"
+              accept=".csv,text/csv"
+              aria-label="Fichier CSV des élèves"
+              className="h-11 max-w-full file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium"
+              onChange={(event) => void selectCsv(event)}
+            />
+            {preview && (
+              <Button type="button" onClick={() => void importCsv()} disabled={importing || previewCounts.valid === 0}>
+                {importing ? 'Import en cours…' : `Importer ${previewCounts.valid} ligne(s) valide(s)`}
+              </Button>
             )}
           </div>
-        )}
-      </section>
+          {preview && (
+            <div className="space-y-3">
+              <p role="status" className="text-sm text-foreground">
+                Aperçu : {previewCounts.valid} ligne(s) prêtes, {previewCounts.skipped} ligne(s) à ignorer.
+              </p>
+              {preview.filter((row) =>
+                row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
+              ).length > 0 && (
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-accent/50 bg-accent/15 p-3 text-sm text-foreground">
+                  {preview.filter((row) =>
+                    row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
+                  ).map((row) => (
+                    <li key={row.line}>
+                      Ligne {row.line} — {row.error ?? `Matricule ${row.data?.matricule} déjà présent`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-      {message && <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
+      {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</p>}
+      {message && <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">{message}</p>}
 
       <section>
         <form
@@ -507,8 +515,8 @@ export function StudentsPage() {
           }}
         >
           <label className="relative min-w-[220px] flex-1">
-            <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
+            <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               aria-label="Rechercher un élève"
               className={`${inputClass} pl-9`}
               placeholder="Rechercher par matricule ou nom"
@@ -518,40 +526,38 @@ export function StudentsPage() {
           </label>
           <Button type="submit" variant="outline">Rechercher</Button>
         </form>
-        <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
+        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
           <Users aria-hidden="true" className="h-4 w-4" />
           {students.length} élève(s){search ? ' dans les résultats' : ''}
         </div>
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[600px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-3">Matricule</th>
-                  <th className="px-5 py-3">Élève</th>
-                  <th className="px-5 py-3">Classe active</th>
-                  <th className="px-5 py-3">Dossier</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {students.length === 0 ? (
-                  <tr><td colSpan={4} className="p-6 text-center text-slate-500">Aucun élève trouvé.</td></tr>
-                ) : students.map((student) => (
-                  <tr key={student.id}>
-                    <td className="px-5 py-3 font-mono text-xs">{student.matricule}</td>
-                    <td className="px-5 py-3 font-semibold text-slate-800">{student.lastName} {student.firstNames}</td>
-                    <td className="px-5 py-3 text-slate-600">{student.enrollments[0]?.classroom.name ?? '—'}</td>
-                    <td className="px-5 py-3">
+        <Card className="gap-0 overflow-hidden border-border py-0 shadow-sm">
+          <Table className="min-w-[700px] text-left">
+            <TableHeader className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-12 px-5">Matricule</TableHead>
+                <TableHead className="h-12 px-5">Élève</TableHead>
+                <TableHead className="h-12 px-5">Classe active</TableHead>
+                <TableHead className="h-12 px-5">Dossier</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {students.length === 0 ? (
+                <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Aucun élève trouvé.</TableCell></TableRow>
+              ) : students.map((student) => (
+                <TableRow key={student.id}>
+                    <TableCell className="px-5 py-3 font-mono text-xs">{student.matricule}</TableCell>
+                    <TableCell className="px-5 py-3 font-semibold text-foreground">{student.lastName} {student.firstNames}</TableCell>
+                    <TableCell className="px-5 py-3 text-muted-foreground">{student.enrollments[0]?.classroom.name ?? '—'}</TableCell>
+                    <TableCell className="px-5 py-3">
                       <Button size="sm" variant="outline" asChild>
                         <Link to={`/eleves/${student.id}`}>Détail</Link>
                       </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       </section>
     </div>
   );

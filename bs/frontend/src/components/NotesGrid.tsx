@@ -1,5 +1,6 @@
 import { useRef, type KeyboardEvent } from 'react';
 import { LIBELLES_STATUT_NOTE, type LigneNote, type StatutNote } from '@/lib/notes';
+import { Table } from '@/components/ui/table';
 
 type NotesGridProps = {
   lignes: LigneNote[];
@@ -48,8 +49,8 @@ export function NotesGrid({ lignes, barame, modifiable, errors, onChangeLine }: 
   const statuts = Object.keys(LIBELLES_STATUT_NOTE) as StatutNote[];
 
   return (
-    <div className="rounded-lg border border-border">
-      <table className="w-full text-sm">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <Table className="text-sm">
         <thead className="hidden bg-muted/50 sm:table-header-group">
           <tr>
             <th className="p-3 text-left">Matricule</th>
@@ -153,7 +154,7 @@ export function NotesGrid({ lignes, barame, modifiable, errors, onChangeLine }: 
             })
           )}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }

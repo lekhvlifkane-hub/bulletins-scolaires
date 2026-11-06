@@ -22,6 +22,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarProvider,
+} from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 
 function roleLabel(role: string) {
@@ -63,10 +70,10 @@ function Navigation({ groups, compact = false }: { groups: LinkGroup[]; compact?
                   `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${
                     compact
                       ? isActive
-                        ? 'bg-[#e8f4ef] text-[#123555]'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        ? 'bg-primary/10 text-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       : isActive
-                        ? 'bg-white text-[#123555] shadow-sm'
+                        ? 'bg-white text-brand-navy shadow-sm'
                         : 'text-white/75 hover:bg-white/10 hover:text-white'
                   } ${compact ? 'gap-2 px-3 py-2' : ''}`
                 }
@@ -77,12 +84,12 @@ function Navigation({ groups, compact = false }: { groups: LinkGroup[]; compact?
                       aria-hidden="true"
                       className={`h-[18px] w-[18px] shrink-0 ${
                         isActive || compact
-                          ? 'text-[#15966b]'
+                          ? 'text-primary'
                           : 'text-white/60 group-hover:text-white'
                       }`}
                     />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
-                    {isActive && <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 text-[#15966b]" />}
+                    {isActive && <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 text-primary" />}
                   </>
                 )}
               </NavLink>
@@ -174,19 +181,19 @@ export function Layout() {
     navigate('/connexion', { replace: true });
   };
 
-  const account = (
+  const account = (inSidebar = false) => (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e6f4ee] text-sm font-bold text-[#147752]">
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${inSidebar ? 'bg-white/10 text-white' : 'bg-primary/10 text-primary'}`}>
         {initials}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="hidden truncate text-sm font-semibold text-slate-800 sm:block">{user?.name}</p>
-        <p className="hidden truncate text-xs text-slate-500 sm:block">{user ? roleLabel(user.role) : ''}</p>
+        <p className={`hidden truncate text-sm font-semibold sm:block ${inSidebar ? 'text-white' : 'text-slate-800'}`}>{user?.name}</p>
+        <p className={`hidden truncate text-xs sm:block ${inSidebar ? 'text-white/65' : 'text-slate-500'}`}>{user ? roleLabel(user.role) : ''}</p>
       </div>
       <Button
         variant="ghost"
         size="icon"
-        className="h-9 w-9 shrink-0 text-slate-500 hover:bg-red-50 hover:text-red-700"
+        className={`h-9 w-9 shrink-0 ${inSidebar ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-red-50 hover:text-red-700'}`}
         onClick={handleLogout}
         aria-label="Déconnexion"
         title="Déconnexion"
@@ -197,49 +204,49 @@ export function Layout() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f5f7f8] text-foreground lg:grid lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="hidden min-h-screen flex-col bg-[#102e4a] px-4 py-6 text-white lg:flex">
-        <div className="mb-9 flex items-center gap-3 px-2">
+    <SidebarProvider className="min-h-screen bg-background text-foreground">
+      <Sidebar collapsible="none" role="complementary" aria-label="Navigation de l’établissement" className="hidden min-h-screen bg-sidebar px-4 py-6 text-sidebar-foreground md:hidden lg:flex">
+        <SidebarHeader className="mb-5 flex-row items-center gap-3 px-2 py-0">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
             <img src="/logo.svg" alt="" className="h-8 w-8" />
           </div>
           <div className="min-w-0">
             <p className="text-[13px] font-bold tracking-wide">Bulletins Scolaires</p>
-            <p className="mt-0.5 truncate text-xs text-white/55">{school?.name ?? 'Espace plateforme'}</p>
+            <p className="mt-0.5 truncate text-xs text-sidebar-foreground/65">{school?.name ?? 'Espace plateforme'}</p>
           </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        </SidebarHeader>
+        <SidebarContent className="min-h-0 flex-1 overflow-y-auto px-0 py-2 pr-1">
           <Navigation groups={groups} />
-        </div>
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.06] p-3.5">
-          <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold text-white/55">
+        </SidebarContent>
+        <SidebarFooter className="mt-6 rounded-2xl border border-sidebar-border bg-white/[0.06] p-3.5">
+          <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold text-sidebar-foreground/65">
             <ShieldCheck aria-hidden="true" className="h-4 w-4 text-emerald-300" />
             Espace sécurisé
           </div>
-          {account}
-        </div>
-        <p className="px-2 pt-5 text-[10px] text-white/35">Bulletins Scolaires · Gestion scolaire</p>
-      </aside>
+          {account(true)}
+          <p className="px-2 pt-3 text-[10px] text-sidebar-foreground/50">Bulletins Scolaires · Gestion scolaire</p>
+        </SidebarFooter>
+      </Sidebar>
 
-      <div className="min-w-0">
-        <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
+      <div className="min-w-0 flex-1 overflow-x-clip">
+        <header className="sticky top-0 z-20 border-b border-border bg-background px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-h-11 items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e8f4ef] lg:hidden">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 lg:hidden">
                 <img src="/logo.svg" alt="" className="h-7 w-7" />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-800">
+                <p className="truncate text-sm font-semibold text-foreground">
                   {activePage?.label ?? 'Espace de gestion'}
                 </p>
-                <p className="hidden truncate text-xs text-slate-500 sm:block">
+                <p className="hidden truncate text-xs text-muted-foreground sm:block">
                   {school?.name ?? roleLabel(user?.role ?? '')}
                 </p>
               </div>
             </div>
-            <div className="flex max-w-[190px] items-center gap-3 sm:max-w-none lg:hidden">{account}</div>
-            <div className="hidden items-center gap-2 rounded-full bg-[#f0f7f3] px-3 py-1.5 text-xs font-medium text-[#176b4e] lg:flex">
-              <span className="h-2 w-2 rounded-full bg-[#16a36a]" />
+            <div className="flex max-w-[190px] items-center gap-3 sm:max-w-none lg:hidden">{account()}</div>
+            <div className="hidden items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary lg:flex">
+              <span className="h-2 w-2 rounded-full bg-primary" />
               Portail sécurisé
             </div>
           </div>
@@ -251,6 +258,6 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

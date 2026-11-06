@@ -47,10 +47,20 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        sidebar: {
+          DEFAULT: 'hsl(var(--sidebar))',
+          foreground: 'hsl(var(--sidebar-foreground))',
+          primary: 'hsl(var(--sidebar-primary))',
+          'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
+          accent: 'hsl(var(--sidebar-accent))',
+          'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
+          border: 'hsl(var(--sidebar-border))',
+          ring: 'hsl(var(--sidebar-ring))',
+        },
         brand: {
-          navy: '#0B2D4F',
-          emerald: '#0B9B67',
-          gold: '#E5B544',
+          navy: 'hsl(var(--brand-navy))',
+          emerald: 'hsl(var(--brand-emerald))',
+          gold: 'hsl(var(--brand-gold))',
         },
       },
       borderRadius: {
@@ -59,7 +69,7 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: ['Inter', 'Segoe UI', 'system-ui', 'sans-serif'],
+        sans: ['Source Sans 3', 'Segoe UI', 'system-ui', 'sans-serif'],
       },
     },
   },
