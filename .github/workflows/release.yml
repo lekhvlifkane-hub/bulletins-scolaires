@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # URL de l'API de production, figée dans l'app lors des builds CI
+  # (src/lib/api.ts lit VITE_API_BASE_URL à la compilation).
+  VITE_API_BASE_URL: https://backend-production-431d.up.railway.app
+
 # Deux exécutions pour un même tag (tag recréé) publieraient des paquets
 # différents et s'écraseraient mutuellement : on annule la plus ancienne.
 concurrency:
@@ -88,6 +93,7 @@ jobs:
             -w /project/bs/frontend \
             -e TAURI_SIGNING_PRIVATE_KEY \
             -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            -e VITE_API_BASE_URL \
             ubuntu:22.04 bash -s <<'CONTAINER'
           set -euo pipefail
           . /etc/os-release
