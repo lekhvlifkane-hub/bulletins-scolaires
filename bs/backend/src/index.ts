@@ -1,10 +1,14 @@
 import app from './app';
+import { assurerAdministrateurGeneral } from './db/bootstrap';
 import { env } from './config/env';
 import { prisma } from './db/prisma';
 import { arreterFileEmails, demarrerFileEmails } from './services/mailer';
 
 async function main(): Promise<void> {
   await prisma.$connect();
+  // Doit tourner avant l'écoute : sans administrateur général instancié, personne
+  // ne peut valider l'inscription des établissements.
+  await assurerAdministrateurGeneral();
 
   const server = app.listen(env.PORT, () => {
     console.log(`API Bulletins Scolaires : http://localhost:${env.PORT}`);

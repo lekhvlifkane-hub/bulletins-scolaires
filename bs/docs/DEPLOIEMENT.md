@@ -83,9 +83,9 @@ Le dépôt fournit l'image Docker du backend (`backend/Dockerfile`) : API Node.j
    - `LOGIN_RATE_LIMIT` selon la politique de l'établissement.
    L'API refuse de démarrer si un secret d'exemple, un cookie non sécurisé, un `APP_BASE_URL` local ou un fournisseur SMTP incomplet subsistent.
 3. Déployer le service (`railway up --service backend` depuis `bs/backend`, ou via l'intégration Git) et attendre le healthcheck `/api/health`.
-4. Créer le compte administrateur plateforme depuis le service backend (shell Railway, ou `railway run` depuis `bs/backend`) :
+4. **Administrateur général** : au démarrage de l'API, si aucun compte PLATFORM_ADMIN n'existe, un compte est créé automatiquement à partir des variables optionnelles `PLATFORM_ADMIN_NAME`, `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` (valeurs par défaut : `admin@bulletins-scolaires.sn` / `Bulletins@Admin2026`). Se connecter à l'interface avec ce compte puis **changer le mot de passe immédiatement** (profil → changer de mot de passe). Ce mécanisme ne touche jamais les comptes existants ; pour un compte supplémentaire, garder le script manuel :
    `npm run create-platform-admin -- --email admin@exemple.sn --name "Administrateur plateforme"`.
-   Transmettre le mot de passe par un canal sûr et le changer après la première connexion.
+   Transmettre tout mot de passe par un canal sûr.
 5. Vérifier en HTTPS : `/api/health`, connexion (cookie `Secure`), ouverture d'un bulletin et PDF, invitation d'un utilisateur, puis vérifier les journaux.
 6. En cas de domaine personnalisé, mettre à jour `APP_BASE_URL` et `CORS_ORIGINS`, puis redéployer le backend.
 

@@ -38,6 +38,16 @@ const envSchema = z.object({
   SMTP_PASS: optionalString.optional(),
   /** Expéditeur des e-mails, au format `Nom <adresse@domaine>`. */
   SMTP_FROM: optionalString.optional(),
+  /** Identifiants par défaut de l'administrateur général : compte PLATFORM_ADMIN créé
+   * au démarrage de l'API si aucun n'existe (lui seul valide l'inscription des établissements). */
+  PLATFORM_ADMIN_NAME: z.string().trim().min(2).default('Administrateur général'),
+  PLATFORM_ADMIN_EMAIL: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .default('admin@bulletins-scolaires.sn'),
+  PLATFORM_ADMIN_PASSWORD: z.string().min(12).default('Bulletins@Admin2026'),
 }).superRefine((value, context) => {
   if (value.NODE_ENV !== 'production') return;
 
@@ -81,6 +91,11 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+/** Valeur de `PLATFORM_ADMIN_PASSWORD` documentée dans `.env.example` : sert
+ * uniquement à afficher une alerte en production quand l'admin est créé avec
+ * le mot de passe de défaut. */
+export const MOT_DE_PASSE_ADMIN_PAR_DEFAUT = 'Bulletins@Admin2026';
 
 export const corsOrigins = env.CORS_ORIGINS.split(',')
   .map((origin) => origin.trim())
