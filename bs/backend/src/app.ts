@@ -19,6 +19,7 @@ import { schoolLifeRouter } from './routes/school-life';
 import { dashboardRouter } from './routes/dashboard';
 import { docsRouter } from './routes/docs';
 import { openApiSpec } from './docs/openapi';
+import { HttpError } from './lib/http';
 import { errorHandler } from './middleware/error-handler';
 
 const app = express();
@@ -43,7 +44,9 @@ app.use(
         callback(null, true);
         return;
       }
-      callback(new Error('Origine non autorisée par CORS'));
+      // HttpError 403 explicite : sans lui, ce rejet sortait comme
+      // « Erreur non gérée » … puis une réponse 500 trompeuse pour le client.
+      callback(new HttpError(403, 'Origine non autorisée par CORS'));
     },
     credentials: true,
   }),
