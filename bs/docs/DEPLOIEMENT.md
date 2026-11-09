@@ -77,17 +77,15 @@ Le dépôt fournit l'image Docker du backend (`backend/Dockerfile`) : API Node.j
    - `NODE_ENV=production` ;
    - `SESSION_SECRET` : valeur aléatoire d'au moins 32 caractères, propre à la production ;
    - `SESSION_COOKIE_SECURE=true` ; `SESSION_COOKIE_SAMESITE=lax` (ou `none` si l'interface est servie depuis un autre site) ;
-   - `APP_BASE_URL=https://<adresse-publique-de-l-interface>` ;
    - `CORS_ORIGINS` : origines autorisées, séparées par des virgules (adresse de l'interface web et origines Tauri `tauri://localhost,http://tauri.localhost`) ;
-   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` ;
    - `LOGIN_RATE_LIMIT` selon la politique de l'établissement.
-   L'API refuse de démarrer si un secret d'exemple, un cookie non sécurisé, un `APP_BASE_URL` local ou un fournisseur SMTP incomplet subsistent.
+   L'API refuse de démarrer si un secret d'exemple ou un cookie non sécurisé subsistent.
 3. Déployer le service (`railway up --service backend` depuis `bs/backend`, ou via l'intégration Git) et attendre le healthcheck `/api/health`.
 4. **Administrateur général** : au démarrage de l'API, si aucun compte PLATFORM_ADMIN n'existe, un compte est créé automatiquement à partir des variables optionnelles `PLATFORM_ADMIN_NAME`, `PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_PASSWORD` (valeurs par défaut : `admin@bulletins-scolaires.sn` / `Bulletins@Admin2026`). Se connecter à l'interface avec ce compte puis **changer le mot de passe immédiatement** (profil → changer de mot de passe). Ce mécanisme ne touche jamais les comptes existants ; pour un compte supplémentaire, garder le script manuel :
    `npm run create-platform-admin -- --email admin@exemple.sn --name "Administrateur plateforme"`.
    Transmettre tout mot de passe par un canal sûr.
 5. Vérifier en HTTPS : `/api/health`, connexion (cookie `Secure`), ouverture d'un bulletin et PDF, invitation d'un utilisateur, puis vérifier les journaux.
-6. En cas de domaine personnalisé, mettre à jour `APP_BASE_URL` et `CORS_ORIGINS`, puis redéployer le backend.
+6. En cas de domaine personnalisé, mettre à jour `CORS_ORIGINS`, puis redéployer le backend.
 
 Les migrations sont appliquées automatiquement à chaque démarrage du conteneur backend ; sauvegarder la base avant toute mise à jour.
 
@@ -100,8 +98,8 @@ Railway déprécie les fichiers `railway.json` au profit de `.railway/railway.ts
 - L'API refuse désormais de démarrer en production si le secret de session est un exemple/faible ou si le cookie sécurisé est désactivé.
 - N'autoriser que les origines frontend nécessaires dans `CORS_ORIGINS`. Le proxy doit terminer TLS, rediriger HTTP vers HTTPS et transmettre correctement les en-têtes `X-Forwarded-Proto`/`Host`.
 - Ne publier ni le port PostgreSQL, ni l'interface d'administration de l'hôte. Ne servir `/api/docs` publiquement que si la politique d'exploitation l'autorise.
-- Créer un compte plateforme initial avec le script dédié ; changer tout secret temporaire immédiatement.
-- Définir `APP_BASE_URL` avec l'adresse publique HTTPS de l'interface (les liens des e-mails y sont rattachés) et renseigner le fournisseur d'envoi : `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. L'API refuse de démarrer en production si `SMTP_HOST`/`SMTP_FROM` manquent ou si `APP_BASE_URL` pointe vers `localhost`. Vérifier ensuite qu'une invitation d'ouverture de compte arrive bien : les messages en échec restent visibles dans la file `EmailOutbox` (statut `ECHEC`), avec leur motif.
+- Créer un compte plateforme initial avec le script dédié (ou laisser le bootstrap automatique le créer) ; changer tout secret temporaire immédiatement.
+- Sans système d'envoi d'e-mails : les invitations d'utilisateurs affichent le mot de passe temporaire dans l'interface, et toute réinitialisation se fait par l'administrateur (compte recréé ou modification directe en base par un opérateur habilité). Aucune variable SMTP n'est nécessaire.
 
 ### Migrations et mises à jour
 
@@ -167,4 +165,4 @@ La commande crée et réinitialise exclusivement `<nom-de-DATABASE_URL>_e2e` sur
 
 ## Limites fonctionnelles à valider
 
-Avant tout usage officiel, faire approuver les règles scolaires, les mentions et la maquette PDF figurant dans [A_VALIDER.md](./A_VALIDER.md). Restent également à définir : le fournisseur d'e-mail de production (la file d'envoi est en place, mais aucun fournisseur n'est configuré) et la politique de conservation des données.
+Avant tout usage officiel, faire approuver les règles scolaires, les mentions et la maquette PDF figurant dans [A_VALIDER.md](./A_VALIDER.md). Reste également à définir la politique de conservation des données. L'application ne dispose plus d'envoi d'e-mails (fonction retirée, voir DECISIONS.md) : aucune adresse de fournisseur SMTP n'a donc à être configurée.

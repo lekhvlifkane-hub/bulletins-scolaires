@@ -115,14 +115,9 @@ export function LoginPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="text-sm font-semibold text-foreground" htmlFor="password">
-                    Mot de passe
-                  </label>
-                  <Link to="/mot-de-passe-oublie" className="text-xs font-semibold text-primary underline-offset-4 hover:underline">
-                    Mot de passe oublié ?
-                  </Link>
-                </div>
+                <label className="text-sm font-semibold text-foreground" htmlFor="password">
+                  Mot de passe
+                </label>
                 <input
                   id="password"
                   type="password"

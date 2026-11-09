@@ -2,7 +2,6 @@ import app from './app';
 import { assurerAdministrateurGeneral } from './db/bootstrap';
 import { env } from './config/env';
 import { prisma } from './db/prisma';
-import { arreterFileEmails, demarrerFileEmails } from './services/mailer';
 
 async function main(): Promise<void> {
   await prisma.$connect();
@@ -15,11 +14,8 @@ async function main(): Promise<void> {
     console.log(`Documentation OpenAPI : http://localhost:${env.PORT}/api/docs`);
   });
 
-  demarrerFileEmails();
-
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`Arrêt demandé (${signal})...`);
-    arreterFileEmails();
     server.close();
     await prisma.$disconnect();
     process.exit(0);

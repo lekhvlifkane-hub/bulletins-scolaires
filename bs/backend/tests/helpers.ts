@@ -11,7 +11,6 @@ import { Role } from '@prisma/client';
  */
 export async function cleanTestDb() {
   await prisma.$transaction([
-    prisma.emailOutbox.deleteMany(),
     prisma.councilDecision.deleteMany(),
     prisma.appreciation.deleteMany(),
     prisma.attendanceRecord.deleteMany(),
@@ -31,7 +30,6 @@ export async function cleanTestDb() {
     prisma.academicYear.deleteMany(),
     prisma.auditLog.deleteMany(),
     prisma.temporaryAccessGrant.deleteMany(),
-    prisma.passwordResetToken.deleteMany(),
     prisma.user.deleteMany(),
     prisma.school.deleteMany(),
   ]);

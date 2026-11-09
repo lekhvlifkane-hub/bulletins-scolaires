@@ -6,14 +6,11 @@ import { prisma } from '../db/prisma';
 import { ensureCsrfToken, requireCsrf, rotateCsrfToken } from '../lib/csrf';
 import { asyncHandler, HttpError } from '../lib/http';
 import {
-  generateToken,
   hashPassword,
-  hashToken,
   verifyPassword,
 } from '../lib/password';
 import { publicSchool, publicUser } from '../lib/serializers';
 import {
-  destroyAllSessions,
   destroyOtherSessions,
   destroySession,
   regenerateSession,
@@ -21,7 +18,6 @@ import {
 } from '../lib/session';
 import { requireAuth } from '../middleware/auth';
 import { writeAuditLog } from '../services/audit';
-import { sendPasswordResetEmail } from '../services/mailer';
 
 const router = Router();
 
@@ -41,13 +37,6 @@ const passwordSchema = z
 const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, 'Mot de passe requis'),
-});
-
-const resetRequestSchema = z.object({ email: emailSchema });
-
-const resetConfirmSchema = z.object({
-  token: z.string().min(20, 'Jeton invalide'),
-  password: passwordSchema,
 });
 
 const profileSchema = z.object({
@@ -71,14 +60,6 @@ const rateLimitHandler = (
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: env.LOGIN_RATE_LIMIT,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  handler: rateLimitHandler,
-});
-
-const resetLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -326,108 +307,6 @@ router.post(
       action: 'USER_PASSWORD_CHANGED',
       entityType: 'User',
       entityId: user.id,
-    });
-
-    res.status(204).end();
-  }),
-);
-
-router.post(
-  '/password-reset/request',
-  resetLimiter,
-  requireCsrf,
-  asyncHandler(async (req, res) => {
-    const { email } = resetRequestSchema.parse(req.body);
-    const user = await prisma.user.findFirst({
-      where: { email, deletedAt: null, isActive: true },
-    });
-
-    if (user) {
-      const token = generateToken();
-      const now = new Date();
-
-      await prisma.$transaction([
-        prisma.passwordResetToken.updateMany({
-          where: { userId: user.id, usedAt: null },
-          data: { usedAt: now },
-        }),
-        prisma.passwordResetToken.create({
-          data: {
-            schoolId: user.schoolId,
-            userId: user.id,
-            tokenHash: hashToken(token),
-            expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-          },
-        }),
-      ]);
-
-      await sendPasswordResetEmail(user.email, token, user.schoolId);
-      await writeAuditLog({
-        req,
-        schoolId: user.schoolId,
-        userId: user.id,
-        action: 'AUTH_PASSWORD_RESET_REQUESTED',
-        entityType: 'User',
-        entityId: user.id,
-      });
-    }
-
-    res.json({
-      message:
-        'Si un compte correspond à cette adresse, un lien de réinitialisation a été envoyé.',
-    });
-  }),
-);
-
-router.post(
-  '/password-reset/confirm',
-  requireCsrf,
-  asyncHandler(async (req, res) => {
-    const { token, password } = resetConfirmSchema.parse(req.body);
-    const tokenHash = hashToken(token);
-    const reset = await prisma.passwordResetToken.findUnique({
-      where: { tokenHash },
-      include: { user: true },
-    });
-
-    if (
-      !reset ||
-      reset.usedAt ||
-      reset.expiresAt <= new Date() ||
-      reset.user.deletedAt ||
-      !reset.user.isActive
-    ) {
-      throw new HttpError(400, 'Lien de réinitialisation invalide ou expiré');
-    }
-
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: reset.userId },
-        data: {
-          passwordHash: await hashPassword(password),
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-        },
-      }),
-      prisma.passwordResetToken.update({
-        where: { id: reset.id },
-        data: { usedAt: new Date() },
-      }),
-      prisma.passwordResetToken.updateMany({
-        where: { userId: reset.userId, usedAt: null },
-        data: { usedAt: new Date() },
-      }),
-    ]);
-
-    await destroyAllSessions(reset.userId);
-
-    await writeAuditLog({
-      req,
-      schoolId: reset.schoolId,
-      userId: reset.userId,
-      action: 'AUTH_PASSWORD_RESET_COMPLETED',
-      entityType: 'User',
-      entityId: reset.userId,
     });
 
     res.status(204).end();

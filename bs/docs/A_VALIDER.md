@@ -12,7 +12,7 @@
 - [ ] Barème et nombre de devoirs / compositions
 - [ ] Effet d'une absence sur la moyenne — *implémentation phase 4* : une absence (`ABSENT`) ou une note annulée (`ANNULEE`) est **exclue** du calcul, jamais remplacée par 0 (règle `absencesComptentZero` = false par défaut, un 0 ne vaut pas une absence). À confirmer par l'établissement.
 - [ ] Politique de conservation des données
-- [ ] **Envoi des e-mails** : l'application écrit chaque message (invitation, réinitialisation de mot de passe) dans une file durable avant de l'envoyer ; un échec SMTP est relancé jusqu'à cinq fois avant abandon. Le fournisseur (`SMTP_HOST`, `SMTP_FROM`, `APP_BASE_URL`) reste à définir par l'établissement : **l'API refuse de démarrer en production sans lui**. Tant qu'il n'est pas configuré, rien n'est envoyé et le lien est seulement journalisé — les invitations et réinitialisations restent donc à transmettre à la main.
+- [x] ~~**Envoi des e-mails**~~ — **résolu le 2026-11-09 : le sous-système e-mail a été supprimé.** L'application n'envoie plus de messages : les invitations d'utilisateurs affichent le mot de passe temporaire dans l'interface (à transmettre à la main), les notifications d'inscription d'établissement n'existent plus et la récupération « mot de passe oublié » n'est plus disponible (un nouvel utilisateur se crée via l'interface, un mot de passe perdu se règle par récréation/modification du compte par l'administrateur). Aucune variable SMTP n'est requise ; le fichier `docs/DECISIONS.md` consigne la décision.
 
 ## Phase 5 — bulletins, comparaison et bilan annuel
 

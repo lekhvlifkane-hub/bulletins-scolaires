@@ -8,11 +8,6 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { requireSchoolScope } from '../middleware/school-scope';
 import { writeAuditLog } from '../services/audit';
 import { requireCsrf } from '../lib/csrf';
-import {
-  sendSchoolRegistrationApprovedEmail,
-  sendSchoolRegistrationReceivedEmail,
-  sendSchoolRegistrationRejectedEmail,
-} from '../services/mailer';
 
 const router = Router();
 
@@ -108,7 +103,6 @@ router.post(
       });
       return { school, user };
     });
-    await sendSchoolRegistrationReceivedEmail(result.user.email, result.school.name);
     await writeAuditLog({
       req,
       schoolId: result.school.id,
@@ -174,13 +168,6 @@ router.post(
         data: { isActive: true },
       });
     });
-    const admin = await prisma.user.findFirst({
-      where: { schoolId, role: 'SCHOOL_ADMIN', deletedAt: null },
-      select: { email: true },
-    });
-    if (admin) {
-      await sendSchoolRegistrationApprovedEmail(admin.email, school.name);
-    }
     await writeAuditLog({
       req,
       userId: req.currentUser!.id,
@@ -206,13 +193,6 @@ router.post(
       where: { id: schoolId },
       data: { status: 'REJECTED', isActive: false },
     });
-    const admin = await prisma.user.findFirst({
-      where: { schoolId, role: 'SCHOOL_ADMIN', deletedAt: null },
-      select: { email: true },
-    });
-    if (admin) {
-      await sendSchoolRegistrationRejectedEmail(admin.email, school.name, reason);
-    }
     await writeAuditLog({
       req,
       userId: req.currentUser!.id,

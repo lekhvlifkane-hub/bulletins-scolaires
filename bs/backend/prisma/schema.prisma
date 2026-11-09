@@ -43,13 +43,6 @@ enum AssessmentStatus {
   PUBLIEE
 }
 
-/// Cycle de vie d'un e-mail mis en file d'attente.
-enum EmailStatus {
-  EN_ATTENTE
-  ENVOYE
-  ECHEC
-}
-
 /// Statut d'une note. Un 0 n'est une note valide que si status = SAISIE.
 enum GradeStatus {
   SAISIE
@@ -127,9 +120,7 @@ model School {
 
   users               User[]
   auditLogs           AuditLog[]
-  emails              EmailOutbox[]
   temporaryAccess     TemporaryAccessGrant[]
-  passwordResetTokens PasswordResetToken[]
   academicYears       AcademicYear[]
   levels              Level[]
   series              Series[]
@@ -322,7 +313,6 @@ model User {
   updatedAt           DateTime  @updatedAt
 
   auditLogs              AuditLog[]             @relation("AuditActor")
-  passwordResetTokens    PasswordResetToken[]
   grantedAccess          TemporaryAccessGrant[] @relation("GrantedBy")
   platformAccessGrants   TemporaryAccessGrant[] @relation("PlatformAdmin")
   bulletinsGeneres       ReportCard[]           @relation("BulletinAuteur")
@@ -334,21 +324,6 @@ model User {
 
   @@index([schoolId, role])
   @@index([deletedAt])
-}
-
-model PasswordResetToken {
-  id        String    @id @default(cuid())
-  schoolId  String?
-  school    School?   @relation(fields: [schoolId], references: [id])
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
 }
 
 model TemporaryAccessGrant {
@@ -367,26 +342,6 @@ model TemporaryAccessGrant {
 
   @@index([schoolId, expiresAt])
   @@index([platformAdminId])
-}
-
-/// E-mail mis en file d'attente puis envoyé par le fournisseur SMTP configuré.
-/// La file est durable : un envoi échoué est relancé au lieu d'être perdu.
-model EmailOutbox {
-  id            String      @id @default(cuid())
-  schoolId      String?
-  school        School?     @relation(fields: [schoolId], references: [id])
-  to            String
-  subject       String
-  bodyText      String
-  status        EmailStatus @default(EN_ATTENTE)
-  attempts      Int         @default(0)
-  lastError     String?
-  nextAttemptAt DateTime    @default(now())
-  sentAt        DateTime?
-  createdAt     DateTime    @default(now())
-
-  @@index([status, nextAttemptAt])
-  @@index([schoolId, createdAt])
 }
 
 model AuditLog {

@@ -3,8 +3,6 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/LoginPage';
-import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
-import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { UsersPage } from '@/pages/UsersPage';
@@ -38,8 +36,6 @@ function App() {
         <Routes>
           <Route path="/connexion" element={<LoginPage />} />
           <Route path="/inscription-etablissement" element={<SchoolRegistrationPage />} />
-          <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
-          <Route path="/reinitialiser-mot-de-passe" element={<ResetPasswordPage />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
               <Route path="/" element={<DashboardPage />} />

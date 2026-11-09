@@ -8,7 +8,6 @@ import { publicUser } from '../lib/serializers';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { assertPlatformAccess, requireSchoolScope } from '../middleware/school-scope';
 import { writeAuditLog } from '../services/audit';
-import { sendInvitationEmail } from '../services/mailer';
 import { requireCsrf } from '../lib/csrf';
 
 const router = Router();
@@ -103,21 +102,6 @@ router.post(
       entityId: user.id,
       metadata: { email: user.email, role: user.role },
     });
-
-    if (!password) {
-      // Le mot de passe temporaire part directement à l'intéressé : l'établissement
-      // n'a pas à le transmettre à la main à chaque ouverture de compte.
-      const ecole = await prisma.school.findUnique({
-        where: { id: schoolId },
-        select: { name: true },
-      });
-      await sendInvitationEmail({
-        to: user.email,
-        temporaryPassword: finalPassword,
-        etablissement: ecole?.name ?? 'votre établissement',
-        schoolId,
-      });
-    }
 
     res.status(201).json({
       user: publicUser(user),

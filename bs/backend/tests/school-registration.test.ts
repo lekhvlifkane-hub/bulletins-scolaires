@@ -79,15 +79,6 @@ describe('Inscription d’un établissement', () => {
     await expect(verifyPassword(MOT_DE_PASSE, admin.passwordHash)).resolves.toBe(true);
   });
 
-  it('met en file l’accusé de réception destiné au futur administrateur', async () => {
-    const { champs } = await inscrire();
-
-    const message = await prisma.emailOutbox.findFirstOrThrow();
-    expect(message.to).toBe(champs.adminEmail);
-    expect(message.subject).toContain("Demande d'inscription reçue");
-    expect(message.status).toBe('EN_ATTENTE');
-  });
-
   it('refuse un e-mail déjà utilisé, sans créer d’établissement', async () => {
     const { champs } = await inscrire();
 
@@ -168,9 +159,6 @@ describe('Validation des demandes par la plateforme', () => {
     const admin = await prisma.user.findUniqueOrThrow({ where: { email: champs.adminEmail } });
     expect(admin.isActive).toBe(true);
 
-    const messages = await prisma.emailOutbox.findMany({ orderBy: { createdAt: 'asc' } });
-    expect(messages.map((m) => m.subject).join(' | ')).toContain('Inscription approuvée');
-
     // Le contrôle décisif : le mot de passe choisi à l'inscription ouvre la session.
     const apresApprobation = await connexion(champs.adminEmail, champs.password);
     expect(apresApprobation.res.status).toBe(200);
@@ -178,7 +166,7 @@ describe('Validation des demandes par la plateforme', () => {
     expect(apresApprobation.res.body.school.id).toBe(ecole.id);
   });
 
-  it('refuse en conservant le motif et le transmet par e-mail', async () => {
+  it('refuse en conservant le motif transmis par la plateforme', async () => {
     const { champs } = await inscrire();
     const ecole = await prisma.school.findFirstOrThrow({ where: { name: champs.schoolName } });
     const { agent, csrf } = await sessionPlateforme();
@@ -196,11 +184,6 @@ describe('Validation des demandes par la plateforme', () => {
 
     const admin = await prisma.user.findUniqueOrThrow({ where: { email: champs.adminEmail } });
     expect(admin.isActive).toBe(false);
-
-    const message = await prisma.emailOutbox.findFirstOrThrow({
-      where: { subject: { contains: 'Inscription refusée' } },
-    });
-    expect(message.bodyText).toContain('Dossier administratif incomplet');
 
     const apresRefus = await connexion(champs.adminEmail, champs.password);
     expect(apresRefus.res.status).toBe(403);
@@ -221,11 +204,6 @@ describe('Validation des demandes par la plateforme', () => {
     expect(
       (await prisma.school.findUniqueOrThrow({ where: { id: ecole.id } })).status,
     ).toBe('REJECTED');
-
-    const message = await prisma.emailOutbox.findFirstOrThrow({
-      where: { subject: { contains: 'Inscription refusée' } },
-    });
-    expect(message.bodyText).toContain("Aucun motif n'a été précisé");
   });
 
   it('n’active que l’établissement concerné', async () => {

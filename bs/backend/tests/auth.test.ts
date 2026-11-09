@@ -85,21 +85,6 @@ describe('Authentification', () => {
     expect([423, 429]).toContain(blocked.status);
   });
 
-  it('demande de réinitialisation ne révèle pas l’existence', async () => {
-    const session = await request(app).get('/api/auth/session');
-    const csrf = session.body.csrfToken;
-    const cookie = session.headers['set-cookie'];
-
-    const res = await request(app)
-      .post('/api/auth/password-reset/request')
-      .set('Cookie', cookie)
-      .set('x-csrf-token', csrf)
-      .send({ email: 'inexistant@test.sn' });
-
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('Si un compte');
-  });
-
   it('refuse les requêtes mutantes sans CSRF', async () => {
     const school = await createSchool();
     await createUser({

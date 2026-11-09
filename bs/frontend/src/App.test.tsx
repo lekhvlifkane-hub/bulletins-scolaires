@@ -28,6 +28,6 @@ describe('Application', () => {
 
     expect(await screen.findByRole('heading', { name: 'Connexion' })).toBeInTheDocument();
     expect(screen.getByAltText('Bulletins Scolaires')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Mot de passe oublié ?' })).toBeInTheDocument();
+    expect(screen.queryByText('Mot de passe oublié ?')).not.toBeInTheDocument();
   });
 });
