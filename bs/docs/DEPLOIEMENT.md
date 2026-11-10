@@ -76,7 +76,7 @@ Le dépôt fournit l'image Docker du backend (`backend/Dockerfile`) : API Node.j
    - `DATABASE_URL` : référence au service PostgreSQL (`${{Postgres.DATABASE_URL}}`) ;
    - `NODE_ENV=production` ;
    - `SESSION_SECRET` : valeur aléatoire d'au moins 32 caractères, propre à la production ;
-   - `SESSION_COOKIE_SECURE=true` ; `SESSION_COOKIE_SAMESITE=lax` (ou `none` si l'interface est servie depuis un autre site) ;
+   - `SESSION_COOKIE_SECURE=true` ; `SESSION_COOKIE_SAMESITE=lax`, ou `none` si l'interface est jointe depuis un autre site — c'est le cas de **l'app de bureau Tauri** (sa fenêtre webview a sa propre origine, un cookie `lax` ne serait jamais envoyé à l'API : connexion 200 puis 401 systématique) ;
    - `CORS_ORIGINS` : origines autorisées, séparées par des virgules (adresse de l'interface web et origines Tauri `tauri://localhost,http://tauri.localhost`) ;
    - `LOGIN_RATE_LIMIT` selon la politique de l'établissement.
    L'API refuse de démarrer si un secret d'exemple ou un cookie non sécurisé subsistent.

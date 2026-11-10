@@ -12,7 +12,11 @@ permissions:
 env:
   # URL de l'API de production, figée dans l'app lors des builds CI
   # (src/lib/api.ts lit VITE_API_BASE_URL à la compilation).
-  VITE_API_BASE_URL: https://backend-production-431d.up.railway.app
+  # Source unique : Variable du dépôt (Settings → Secrets and variables →
+  # Actions → onglet Variables) — modifiable sans commit. Si la variable
+  # n'est pas définie, le build retombe sur la valeur de secours de
+  # src/lib/api.ts (dernière URL de production connue).
+  VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
 # Deux exécutions pour un même tag (tag recréé) publieraient des paquets
 # différents et s'écraseraient mutuellement : on annule la plus ancienne.

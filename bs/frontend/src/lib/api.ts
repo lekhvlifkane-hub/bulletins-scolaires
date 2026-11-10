@@ -2,10 +2,11 @@ const API_BASE_URL = (() => {
   const fromEnv = import.meta.env.VITE_API_BASE_URL as string | undefined;
   if (fromEnv && fromEnv.length > 0) return fromEnv.replace(/\/+$/, '');
   // En développement Tauri, le backend local reste pratique ; l'app distribuée
-  // se connecte au backend de production.
+  // se connecte au backend de production. Cette valeur de secours est utilisée
+  // si la Variable GitHub VITE_API_BASE_URL n'était pas définie au build.
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
     return import.meta.env.PROD
-      ? 'https://backend-production-431d.up.railway.app'
+      ? 'https://bulletins-scolaires-production.up.railway.app'
       : 'http://localhost:4000';
   }
   // Dev navigateur : URL relative → le proxy Vite (/api → :4000) prend le relais.
