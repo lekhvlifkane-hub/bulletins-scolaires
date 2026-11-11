@@ -6,7 +6,7 @@ const API_BASE_URL = (() => {
   // si la Variable GitHub VITE_API_BASE_URL n'était pas définie au build.
   if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
     return import.meta.env.PROD
-      ? 'https://bulletins-scolaires-production.up.railway.app'
+      ? 'https://backend-production-431d.up.railway.app'
       : 'http://localhost:4000';
   }
   // Dev navigateur : URL relative → le proxy Vite (/api → :4000) prend le relais.
