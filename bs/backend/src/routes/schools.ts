@@ -15,6 +15,24 @@ const router = Router();
 const poids = z.number().min(0).max(999.99);
 
 /**
+ * Logo : data URL PNG/JPEG uniquement. Le format est volontairement restreint
+ * (pas de SVG) et la taille décodée est plafonnée à 1 Mio.
+ */
+const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_DATA_URL_MAX_LENGTH = Math.ceil((LOGO_MAX_BYTES * 4) / 3) + 64;
+const logoDataUrlSchema = z
+  .string()
+  .max(LOGO_DATA_URL_MAX_LENGTH, 'Logo trop volumineux (1 Mo maximum)')
+  .regex(
+    /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/,
+    'Logo invalide : utilisez une image PNG ou JPEG',
+  )
+  .refine(
+    (value) => Buffer.from(value.slice(value.indexOf(',') + 1), 'base64').length <= LOGO_MAX_BYTES,
+    'Logo trop volumineux (1 Mo maximum)',
+  );
+
+/**
  * Règles de calcul de l'établissement. Les valeurs autorisées sont exactement celles
  * comprises par le moteur de calcul (`services/calcul/etablissement.ts`) : une valeur
  * hors liste est refusée plutôt que silencieusement remplacée par le défaut.
@@ -46,6 +64,7 @@ const schoolSchema = z
     phone: z.string().trim().optional(),
     email: z.string().trim().toLowerCase().email().optional(),
     accreditationNumber: z.string().trim().optional(),
+    logoDataUrl: logoDataUrlSchema.nullable().optional(),
     isActive: z.boolean().optional(),
     adminName: z.string().trim().min(2).optional(),
     adminEmail: z.string().trim().toLowerCase().email().optional(),

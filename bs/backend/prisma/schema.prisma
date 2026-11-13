@@ -94,6 +94,7 @@ model School {
   phone               String?
   email               String?
   accreditationNumber String?
+  logoDataUrl         String?      @db.Text
   status              SchoolStatus @default(ACTIVE)
   isActive            Boolean      @default(true)
 

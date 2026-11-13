@@ -335,6 +335,32 @@ function filet(plan: Plan): void {
   plan.y += 7;
 }
 
+const LOGO_PDF_LARGEUR = 120;
+const LOGO_PDF_HAUTEUR = 34;
+
+/** Dessine le logo figé du snapshot, s'il est présent et lisible par PDFKit. */
+function dessinerLogo(plan: Plan, logoDataUrl: string | null | undefined): void {
+  if (!logoDataUrl) return;
+  const correspondance = /^data:image\/(?:png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(
+    logoDataUrl,
+  );
+  if (!correspondance) return;
+  try {
+    const image = Buffer.from(correspondance[1], 'base64');
+    if (image.length === 0) return;
+    const x = ZONE.x + (ZONE.largeur - LOGO_PDF_LARGEUR) / 2;
+    plan.doc.image(image, x, plan.y, {
+      fit: [LOGO_PDF_LARGEUR, LOGO_PDF_HAUTEUR],
+      align: 'center',
+      valign: 'center',
+    });
+    signaler(plan, x, plan.y, LOGO_PDF_LARGEUR, LOGO_PDF_HAUTEUR, '[logo]');
+    plan.y += LOGO_PDF_HAUTEUR + 3;
+  } catch {
+    // Un logo corrompu ne doit jamais empêcher l'impression du bulletin.
+  }
+}
+
 function hauteurCellule(doc: Doc, cellule: Cellule, largeur: number, taille: number): number {
   let total = 0;
   if (cellule.texte) {
@@ -662,6 +688,7 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
   const etiquette = `${s.eleve.nom} ${s.eleve.prenoms} — ${s.eleve.matricule} — ${s.eleve.classe} — ${s.enTete.semestre.nom}`;
   const mention = mentionDe(meta, s.genereLe);
 
+  dessinerLogo(plan, s.enTete.logoDataUrl);
   ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
     aligne: 'centre',
     style: 'gras',
@@ -904,6 +931,7 @@ function ecart(de: string | null, s: SnapshotBulletin): string {
 
 function dessinerBilan(plan: Plan, s: SnapshotBilanAnnuel, meta: MetaBulletin): void {
   const debut = plan.page;
+  dessinerLogo(plan, s.enTete.logoDataUrl);
   ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
     aligne: 'centre',
     style: 'gras',

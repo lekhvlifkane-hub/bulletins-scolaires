@@ -29,6 +29,10 @@ import {
 
 const TOLERANCE = 0.01;
 
+/** PNG 1×1 valide pour vérifier le rendu du logo dans le PDF. */
+const LOGO_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
 function note(overrides: Partial<NoteSnapshot> = {}): NoteSnapshot {
   return {
     assessmentId: 'ev-1',
@@ -247,6 +251,16 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     // rien d'inventé : l'agrément et les textes libres ne sont pas posés
     expect(texte).not.toContain('Agrément');
     expect(texte).toContain('Non renseigné');
+  });
+
+  it('imprime le logo figé dans le snapshot', async () => {
+    const s = snapshot();
+    s.enTete.logoDataUrl = LOGO_PNG;
+    const resultat = await genererPdfBulletin({ snapshot: s, meta: meta() });
+
+    expect(resultat.pages).toBe(1);
+    assertRenduSain(resultat.journal);
+    expect(texteDe(resultat.journal)).toContain('[logo]');
   });
 
   it('un bulletin publié ne porte pas de filigrane, un brouillon si', async () => {

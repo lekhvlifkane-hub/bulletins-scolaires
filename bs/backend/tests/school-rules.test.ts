@@ -19,6 +19,10 @@ async function loginAs(email: string, password: string) {
   };
 }
 
+/** PNG 1×1 valide, suffisant pour vérifier le transport et le stockage du logo. */
+const LOGO_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
 /** Toutes les règles que l'écran « Paramètres établissement » peut enregistrer. */
 const REGLES_MODIFIEES = {
   regleCalculMatiere: 'MOYENNE_TOUTES_NOTES',
@@ -200,5 +204,64 @@ describe("Règles de calcul de l'établissement", () => {
     const res = await agent.patch(`/api/schools/${school.id}`).send({ rangMode: 'DENSE' });
 
     expect(res.status).toBe(403);
+  });
+
+  it('enregistre un logo PNG et permet de le retirer', async () => {
+    const school = await createSchool('École avec logo');
+    await createUser({
+      email: 'logo@ecole.sn',
+      password: 'MotDePasse123456',
+      role: 'SCHOOL_ADMIN',
+      schoolId: school.id,
+    });
+
+    const { csrf, agent } = await loginAs('logo@ecole.sn', 'MotDePasse123456');
+    const enregistre = await agent
+      .patch(`/api/schools/${school.id}`)
+      .set('x-csrf-token', csrf)
+      .send({ logoDataUrl: LOGO_PNG });
+
+    expect(enregistre.status, JSON.stringify(enregistre.body)).toBe(200);
+    expect(enregistre.body.school.logoDataUrl).toBe(LOGO_PNG);
+    const enBase = await prisma.school.findUniqueOrThrow({ where: { id: school.id } });
+    expect(enBase.logoDataUrl).toBe(LOGO_PNG);
+
+    const retire = await agent
+      .patch(`/api/schools/${school.id}`)
+      .set('x-csrf-token', csrf)
+      .send({ logoDataUrl: null });
+
+    expect(retire.status, JSON.stringify(retire.body)).toBe(200);
+    expect(retire.body.school.logoDataUrl).toBeNull();
+    expect(
+      (await prisma.school.findUniqueOrThrow({ where: { id: school.id } })).logoDataUrl,
+    ).toBeNull();
+  });
+
+  it('refuse un logo SVG ou un faux data URL', async () => {
+    const school = await createSchool('École logo invalide');
+    await createUser({
+      email: 'logo-invalide@ecole.sn',
+      password: 'MotDePasse123456',
+      role: 'SCHOOL_ADMIN',
+      schoolId: school.id,
+    });
+
+    const { csrf, agent } = await loginAs('logo-invalide@ecole.sn', 'MotDePasse123456');
+    for (const logoDataUrl of [
+      'data:image/svg+xml;base64,PHN2Zy8+',
+      'data:text/html;base64,PHNjcmlwdC8+',
+      'https://exemple.sn/logo.png',
+    ]) {
+      const res = await agent
+        .patch(`/api/schools/${school.id}`)
+        .set('x-csrf-token', csrf)
+        .send({ logoDataUrl });
+      expect(res.status, logoDataUrl).toBe(400);
+    }
+
+    expect(
+      (await prisma.school.findUniqueOrThrow({ where: { id: school.id } })).logoDataUrl,
+    ).toBeNull();
   });
 });

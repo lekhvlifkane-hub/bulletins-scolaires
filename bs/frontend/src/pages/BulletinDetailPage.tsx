@@ -157,9 +157,18 @@ export function BulletinDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">
-            Bulletin {snapshot.enTete.semestre.nom} — {snapshot.eleve.nom} {snapshot.eleve.prenoms}
-          </h1>
+          <div className="flex items-center gap-3">
+            {snapshot.enTete.logoDataUrl ? (
+              <img
+                src={snapshot.enTete.logoDataUrl}
+                alt={`Logo de ${snapshot.enTete.nomEtablissement}`}
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+            ) : null}
+            <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">
+              Bulletin {snapshot.enTete.semestre.nom} — {snapshot.eleve.nom} {snapshot.eleve.prenoms}
+            </h1>
+          </div>
           <p className="text-sm text-muted-foreground">
             {snapshot.enTete.nomEtablissement} · {snapshot.eleve.classe}
             {snapshot.eleve.niveau ? ` · ${snapshot.eleve.niveau}` : ''} ·{' '}

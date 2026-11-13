@@ -52,7 +52,8 @@ app.use(
   }),
 );
 
-app.use(express.json());
+// Le logo d'établissement est transmis en data URL dans le JSON (1 Mio décodé).
+app.use(express.json({ limit: '2mb' }));
 
 app.use(
   session({

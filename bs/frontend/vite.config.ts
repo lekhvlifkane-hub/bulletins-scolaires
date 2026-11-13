@@ -60,6 +60,8 @@ export default defineConfig(({ mode }) => {
       // Neuf fichiers exécutés chacun dans un jsdom saturent la machine de développement :
       // on les lance l'un après l'autre, comme côté backend (`fileParallelism: false`).
       fileParallelism: false,
+      // Les graphes Recharts et le rendu jsdom dépassent parfois 5 s sur une machine chargée.
+      testTimeout: 15_000,
     },
   };
 });

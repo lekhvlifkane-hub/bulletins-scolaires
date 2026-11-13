@@ -12,7 +12,11 @@ type School = {
   phone: string | null;
   email: string | null;
   accreditationNumber: string | null;
+  logoDataUrl: string | null;
 };
+
+const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_TYPES = ['image/png', 'image/jpeg'];
 
 type Regles = {
   regleCalculMatiere: 'POIDS_GROUPES' | 'MOYENNE_TOUTES_NOTES';
@@ -106,7 +110,7 @@ function Section({ titre, children }: { titre: string; children: React.ReactNode
 }
 
 export function SchoolSettingsPage() {
-  const { school } = useAuth();
+  const { school, refresh } = useAuth();
   const [form, setForm] = useState<School>({
     id: school?.id ?? '',
     name: school?.name ?? '',
@@ -116,6 +120,7 @@ export function SchoolSettingsPage() {
     phone: school?.phone ?? '',
     email: school?.email ?? '',
     accreditationNumber: school?.accreditationNumber ?? '',
+    logoDataUrl: school?.logoDataUrl ?? null,
   });
   const [regles, setRegles] = useState<Regles>(REGLES_PAR_DEFAUT);
   const [saving, setSaving] = useState(false);
@@ -133,10 +138,37 @@ export function SchoolSettingsPage() {
         phone: school.phone ?? '',
         email: school.email ?? '',
         accreditationNumber: school.accreditationNumber ?? '',
+        logoDataUrl: school.logoDataUrl ?? null,
       });
       setRegles(reglesDepuisEcole(school));
     }
   }, [school]);
+
+  const choisirLogo = async (fichier: File | undefined) => {
+    if (!fichier) return;
+    setError(null);
+    setMessage(null);
+    if (!LOGO_TYPES.includes(fichier.type)) {
+      setError('Logo invalide : utilisez une image PNG ou JPEG');
+      return;
+    }
+    if (fichier.size > LOGO_MAX_BYTES) {
+      setError('Logo trop volumineux (1 Mo maximum)');
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resolve(String(lecteur.result));
+      lecteur.onerror = () => reject(new Error('Impossible de lire le fichier'));
+      lecteur.readAsDataURL(fichier);
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : 'Impossible de lire le fichier');
+      return null;
+    });
+    if (dataUrl) {
+      setForm((actuel) => ({ ...actuel, logoDataUrl: dataUrl }));
+    }
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,7 +216,9 @@ export function SchoolSettingsPage() {
       const body = await res.json().catch(() => ({}));
       if (body.school) {
         setRegles(reglesDepuisEcole(body.school));
+        setForm((actuel) => ({ ...actuel, logoDataUrl: body.school.logoDataUrl ?? null }));
       }
+      await refresh();
       setMessage('Paramètres enregistrés');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur');
@@ -248,6 +282,51 @@ export function SchoolSettingsPage() {
               value={form.address ?? ''}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
+          </div>
+        </Section>
+
+        <Section titre="Logo de l'établissement">
+          <p className="text-xs text-muted-foreground">
+            Le logo apparaît dans l'application et en en-tête des bulletins PDF. Formats acceptés :
+            PNG ou JPEG, 1 Mo maximum.
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex h-24 w-40 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-3">
+              {form.logoDataUrl ? (
+                <img
+                  src={form.logoDataUrl}
+                  alt="Logo de l'établissement"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">Aucun logo</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="cursor-pointer rounded-md border border-input px-3 py-2 text-sm font-medium hover:bg-muted">
+                Choisir une image
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="sr-only"
+                  aria-label="Choisir le logo de l'établissement"
+                  onChange={(e) => {
+                    void choisirLogo(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {form.logoDataUrl ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setForm({ ...form, logoDataUrl: null })}
+                >
+                  Retirer le logo
+                </Button>
+              ) : null}
+            </div>
           </div>
         </Section>
 

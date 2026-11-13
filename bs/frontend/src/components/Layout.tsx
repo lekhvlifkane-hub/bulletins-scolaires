@@ -106,6 +106,7 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const schoolTeam = user && ['SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'].includes(user.role);
+  const schoolLogo = school?.logoDataUrl ?? '/logo.svg';
   const groups: LinkGroup[] = [
     {
       label: 'Mon espace',
@@ -207,8 +208,12 @@ export function Layout() {
     <SidebarProvider className="min-h-screen bg-background text-foreground">
       <Sidebar collapsible="none" role="complementary" aria-label="Navigation de l’établissement" className="hidden min-h-screen bg-sidebar px-4 py-6 text-sidebar-foreground md:hidden lg:flex">
         <SidebarHeader className="mb-7 flex-row items-center gap-3 border-b border-white/10 px-2 pb-5 pt-1">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm">
-            <img src="/logo.svg" alt="" className="h-7 w-7" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm">
+            <img
+              src={schoolLogo}
+              alt={school?.logoDataUrl ? `Logo de ${school.name}` : ''}
+              className="max-h-full max-w-full object-contain"
+            />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold tracking-tight">Bulletins Scolaires</p>
@@ -232,8 +237,12 @@ export function Layout() {
         <header className="sticky top-0 z-20 border-b border-border/80 bg-card px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-h-11 items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 lg:hidden">
-                <img src="/logo.svg" alt="" className="h-7 w-7" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 p-1 lg:hidden">
+                <img
+                  src={schoolLogo}
+                  alt={school?.logoDataUrl ? `Logo de ${school.name}` : ''}
+                  className="max-h-full max-w-full object-contain"
+                />
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">

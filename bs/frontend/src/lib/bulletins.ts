@@ -115,6 +115,7 @@ export interface SnapshotBulletin {
   enTete: {
     nomEtablissement: string;
     ville: string | null;
+    logoDataUrl?: string | null;
     intituleDocument: string;
     anneeScolaire: { id: string; nom: string; statut: string };
     semestre: { id: string; numero: number; nom: string };
@@ -287,6 +288,7 @@ export interface SnapshotBilanAnnuel {
   genereLe: string;
   enTete: {
     nomEtablissement: string;
+    logoDataUrl?: string | null;
     intituleDocument: string;
     anneeScolaire: { id: string; nom: string; statut: string };
   };

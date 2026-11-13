@@ -309,6 +309,7 @@ export async function construireSnapshot(options: {
       telephone: school.phone,
       email: school.email,
       agrement: school.accreditationNumber,
+      logoDataUrl: school.logoDataUrl,
       autorite: null,
       devise: null,
       intituleDocument: 'Bulletin de notes',

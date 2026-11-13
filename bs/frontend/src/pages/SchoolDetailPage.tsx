@@ -10,6 +10,7 @@ type School = {
   city: string | null;
   email: string | null;
   phone: string | null;
+  logoDataUrl: string | null;
 };
 
 type User = {
@@ -92,12 +93,25 @@ export function SchoolDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{school?.name ?? "Détail de l'établissement"}</h1>
-          <p className="text-sm text-muted-foreground">
-            {school?.city ? school.city : 'Vue synthétique'}
-          </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {school?.logoDataUrl ? (
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border bg-white p-2">
+              <img
+                src={school.logoDataUrl}
+                alt={`Logo de ${school.name}`}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          ) : null}
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-semibold">
+              {school?.name ?? "Détail de l'établissement"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {school?.city ? school.city : 'Vue synthétique'}
+            </p>
+          </div>
         </div>
         <Button variant="outline" asChild>
           <Link to="/etablissements">Retour aux établissements</Link>

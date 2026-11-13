@@ -81,6 +81,8 @@ export interface EnTeteSnapshot {
   telephone: string | null;
   email: string | null;
   agrement: string | null;
+  /** Logo figé dans le snapshot (data URL PNG/JPEG), absent des anciens bulletins. */
+  logoDataUrl?: string | null;
   /** Textes laissés vides tant que l'établissement ne les a pas fournis (rien d'inventé). */
   autorite: string | null;
   devise: string | null;

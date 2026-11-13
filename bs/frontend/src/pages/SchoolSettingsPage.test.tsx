@@ -19,6 +19,7 @@ const ECOLE = {
   phone: null,
   email: null,
   accreditationNumber: null,
+  logoDataUrl: null,
   isActive: true,
   createdAt: new Date().toISOString(),
   regleCalculMatiere: 'POIDS_GROUPES',
@@ -131,6 +132,41 @@ describe('SchoolSettingsPage — règles de calcul', () => {
     expect(appel.corps.poidsSemestre2).toBe(2);
     expect(typeof appel.corps.arrondiDecimales).toBe('number');
     expect(await screen.findByText('Paramètres enregistrés')).toBeInTheDocument();
+  });
+
+  it('prévisualise et enregistre le logo choisi', async () => {
+    const { appels } = installer();
+    rendre();
+
+    await screen.findByDisplayValue('Lycée Test');
+    const fichier = new File([new Uint8Array([137, 80, 78, 71])], 'logo.png', {
+      type: 'image/png',
+    });
+    fireEvent.change(screen.getByLabelText(/Choisir le logo de l'établissement/), {
+      target: { files: [fichier] },
+    });
+
+    expect(await screen.findByAltText("Logo de l'établissement")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(appels).toHaveLength(1));
+    expect(appels[0].corps.logoDataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('refuse un fichier qui n’est pas un PNG ou JPEG', async () => {
+    const { appels } = installer();
+    rendre();
+
+    await screen.findByDisplayValue('Lycée Test');
+    const fichier = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' });
+    fireEvent.change(screen.getByLabelText(/Choisir le logo de l'établissement/), {
+      target: { files: [fichier] },
+    });
+
+    expect(
+      await screen.findByText(/Logo invalide : utilisez une image PNG ou JPEG/),
+    ).toBeInTheDocument();
+    expect(appels).toHaveLength(0);
   });
 
   it('n’envoie rien quand une règle numérique est vide', async () => {

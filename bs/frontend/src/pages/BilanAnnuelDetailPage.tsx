@@ -74,9 +74,18 @@ export function BilanAnnuelDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">
-            Bilan annuel — {donnees.eleve.nom} {donnees.eleve.prenoms}
-          </h1>
+          <div className="flex items-center gap-3">
+            {donnees.enTete.logoDataUrl ? (
+              <img
+                src={donnees.enTete.logoDataUrl}
+                alt={`Logo de ${donnees.enTete.nomEtablissement}`}
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+            ) : null}
+            <h1 className="text-2xl font-semibold">
+              Bilan annuel — {donnees.eleve.nom} {donnees.eleve.prenoms}
+            </h1>
+          </div>
           <p className="text-sm text-muted-foreground">
             {donnees.enTete.nomEtablissement} · {donnees.eleve.classe} ·{' '}
             {donnees.enTete.anneeScolaire.nom} · matricule {donnees.eleve.matricule}

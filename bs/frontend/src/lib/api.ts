@@ -57,6 +57,7 @@ type SessionSchool = {
   phone: string | null;
   email: string | null;
   accreditationNumber: string | null;
+  logoDataUrl: string | null;
   isActive: boolean;
   createdAt: string;
 } & SchoolRules;
