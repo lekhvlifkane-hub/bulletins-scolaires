@@ -11,6 +11,7 @@ import {
   FileText,
   GraduationCap,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   NotebookPen,
   ScrollText,
@@ -105,7 +106,8 @@ export function Layout() {
   const { user, school, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const schoolTeam = user && ['SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'].includes(user.role);
+  const isSchoolAdmin = user?.role === 'SCHOOL_ADMIN';
+  const isSchoolTeam = user != null && ['SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'].includes(user.role);
   const schoolLogo = school?.logoDataUrl ?? '/logo.svg';
   const groups: LinkGroup[] = [
     {
@@ -114,25 +116,47 @@ export function Layout() {
     },
   ];
 
-  if (schoolTeam) {
+  if (isSchoolTeam) {
+    // Ordre selon le métier : le surveillant général vit dans la vie scolaire,
+    // l'assistant dans la saisie des notes.
+    const auQuotidien: LinkItem[] =
+      user.role === 'SURVEILLANT_GENERAL'
+        ? [
+            { to: '/vie-scolaire', label: 'Vie scolaire', icon: ClipboardCheck },
+            { to: '/saisie-notes', label: 'Saisie des notes', icon: NotebookPen },
+            { to: '/eleves', label: 'Élèves', icon: GraduationCap },
+          ]
+        : [
+            { to: '/saisie-notes', label: 'Saisie des notes', icon: NotebookPen },
+            { to: '/vie-scolaire', label: 'Vie scolaire', icon: ClipboardCheck },
+            { to: '/eleves', label: 'Élèves', icon: GraduationCap },
+          ];
+    groups.push({ label: 'Au quotidien', links: auQuotidien });
+
+    // « Contrôles avant bulletins » : vérifications avant calcul, mises en
+    // avant pour l'administrateur d'établissement. Filtrage de menu seulement :
+    // le backend reste accessible aux autres rôles école.
+    const resultats: LinkItem[] = [];
+    if (isSchoolAdmin) {
+      resultats.push({ to: '/verifications', label: 'Contrôles avant bulletins', icon: ListChecks });
+    }
+    resultats.push(
+      { to: '/bulletins', label: 'Bulletins', icon: FileText },
+      { to: '/calculs', label: 'Moyennes et rangs', icon: Calculator },
+      { to: '/bilan-annuel', label: 'Bilan annuel', icon: ChartNoAxesColumn },
+    );
+    groups.push({ label: 'Résultats', links: resultats });
+  }
+
+  // Réglages : installation de l'année scolaire, usage rare — le directeur
+  // seul. Un surveillant ou un assistant n'en a pas besoin au quotidien.
+  if (isSchoolAdmin) {
     groups.push({
-      label: 'Vie de l’établissement',
+      label: 'Réglages (début d’année)',
       links: [
-        { to: '/eleves', label: 'Élèves', icon: GraduationCap },
-        { to: '/classes', label: 'Organisation scolaire', icon: School },
-        { to: '/disciplines', label: 'Disciplines et coefficients', icon: BookOpenCheck },
-        { to: '/vie-scolaire', label: 'Vie scolaire', icon: BookOpenCheck },
-      ],
-    });
-    groups.push({
-      label: 'Pédagogie',
-      links: [
-        { to: '/saisie-notes', label: 'Saisie des notes', icon: NotebookPen },
-        { to: '/types-evaluation', label: 'Types d’évaluation', icon: ClipboardList },
-        { to: '/verifications', label: 'Vérifications', icon: ClipboardCheck },
-        { to: '/calculs', label: 'Calcul et classement', icon: Calculator },
-        { to: '/bulletins', label: 'Bulletins', icon: FileText },
-        { to: '/bilan-annuel', label: 'Bilan annuel', icon: ChartNoAxesColumn },
+        { to: '/classes', label: 'Classes et années', icon: School },
+        { to: '/disciplines', label: 'Matières', icon: BookOpenCheck },
+        { to: '/types-evaluation', label: 'Devoirs et compositions', icon: ClipboardList },
       ],
     });
   }

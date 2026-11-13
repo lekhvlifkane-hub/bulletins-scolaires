@@ -91,7 +91,7 @@ export function EvaluationTypesPage() {
     <div className="space-y-6">
       <header>
         <p className="text-sm font-semibold text-emerald-700">Pédagogie</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Types d’évaluation</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Devoirs et compositions</h1>
         <p className="mt-2 text-sm text-slate-500">
           Configurez les devoirs, compositions et autres évaluations ainsi que leur barème par défaut.
         </p>
