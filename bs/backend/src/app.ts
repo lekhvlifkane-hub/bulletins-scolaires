@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { env, corsOrigins } from './config/env';
@@ -54,6 +55,10 @@ app.use(
 
 // Le logo d'établissement est transmis en data URL dans le JSON (1 Mio décodé).
 app.use(express.json({ limit: '2mb' }));
+
+// Compression gzip des réponses JSON : les paquets (bulletins, listes d'élèves)
+// arrivent ~5× plus légers sur la dernière ligne réseau des établissements.
+app.use(compression());
 
 app.use(
   session({

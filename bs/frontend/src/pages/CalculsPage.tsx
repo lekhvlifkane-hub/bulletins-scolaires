@@ -110,7 +110,7 @@ export function CalculsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Calcul et classement</h1>
+        <h1 className="text-2xl font-semibold">Moyennes et rangs</h1>
         <p className="text-sm text-muted-foreground">
           Moyennes, points pondérés, moyenne générale et rangs sont calculés par le serveur. Les
           évaluations non validées sont exclues du calcul officiel.

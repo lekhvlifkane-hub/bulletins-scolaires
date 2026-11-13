@@ -104,7 +104,7 @@ export function VerificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Vérification des saisies</h1>
+        <h1 className="text-2xl font-semibold">Contrôles avant bulletins</h1>
         <p className="text-sm text-muted-foreground">
           Workflow brouillon → saisie → à vérifier → validée → publiée. Une évaluation validée ne
           peut plus être modifiée sans repasser en « à vérifier ».

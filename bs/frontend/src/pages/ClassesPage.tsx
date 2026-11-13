@@ -462,7 +462,7 @@ export function ClassesPage() {
           </span>
           <div>
             <p className="text-sm font-medium text-emerald-200">Organisation pédagogique</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Organisation pédagogique</h1>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Classes et années</h1>
             <p className="mt-2 text-sm text-blue-100/75">
               Gérez les années scolaires, semestres, niveaux, séries et classes de votre établissement.
             </p>

@@ -178,7 +178,7 @@ export function DisciplinesPage() {
     <div className="space-y-6">
       <header>
         <p className="text-sm font-semibold text-emerald-700">Pédagogie</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Disciplines et coefficients</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Matières</h1>
         <p className="mt-2 text-sm text-slate-500">
           Créez le catalogue des disciplines et affectez-les aux classes avec leurs coefficients.
         </p>
