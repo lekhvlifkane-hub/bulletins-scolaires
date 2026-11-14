@@ -59,10 +59,10 @@ Les migrations Prisma sont appliquées automatiquement au démarrage du conteneu
 
 ### Backend hébergé en production
 
-- URL de l'API : <https://backend-production-431d.up.railway.app>
-- Vérification de santé : <https://backend-production-431d.up.railway.app/api/health>
+- URL de l'API : <https://bulletins-scolaires-production.up.railway.app>
+- Vérification de santé : <https://bulletins-scolaires-production.up.railway.app/api/health>
 
-L'application desktop à partir de la version 0.1.5 utilise ce backend en production. Seul le backend est hébergé sur Railway ; le frontend web n'y est pas déployé.
+L'application desktop utilise ce backend en production (figé au build via `VITE_API_BASE_URL` dans `.github/workflows/release.yml`). Seul le backend est hébergé sur Railway ; le frontend web n'y est pas déployé.
 
 ### 3. Backend en développement (hors Docker)
 
