@@ -240,6 +240,36 @@ describe('Permissions et isolation', () => {
     expect(res.body.user.schoolId).toBe(e1.id);
   });
 
+  it('limite à trois le nombre de comptes non supprimés par établissement', async () => {
+    const school = await createSchool('École limite comptes');
+    await createUser({
+      email: 'admin-limite@ecole.sn',
+      password: 'MotDePasse123456',
+      role: 'SCHOOL_ADMIN',
+      schoolId: school.id,
+    });
+    const { agent, csrf } = await loginAs('admin-limite@ecole.sn', 'MotDePasse123456');
+
+    for (const [name, email] of [
+      ['Assistant 1', 'assistant1@ecole.sn'],
+      ['Assistant 2', 'assistant2@ecole.sn'],
+    ]) {
+      const response = await agent
+        .post('/api/users')
+        .set('x-csrf-token', csrf)
+        .send({ name, email, role: 'ASSISTANT' });
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+    }
+
+    const refused = await agent
+      .post('/api/users')
+      .set('x-csrf-token', csrf)
+      .send({ name: 'Assistant 3', email: 'assistant3@ecole.sn', role: 'ASSISTANT' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toContain('limite de 3 comptes');
+    expect(await prisma.user.count({ where: { schoolId: school.id, deletedAt: null } })).toBe(3);
+  });
+
   it("un SCHOOL_ADMIN peut accorder un accès temporaire à un PLATFORM_ADMIN", async () => {
     const school = await createSchool('École accès temporaire');
     await createUser({

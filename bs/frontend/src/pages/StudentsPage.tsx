@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Download, FileUp, Search, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { readSheet } from 'read-excel-file/browser';
+import writeXlsxFile from 'write-excel-file/browser';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,20 +17,46 @@ import {
 } from '@/components/ui/table';
 
 type StudentCsvData = {
-  matricule: string;
+  matricule?: string;
   lastName: string;
   firstNames: string;
-  birthDate?: string;
+  birthDate: string;
   birthPlace?: string;
   sex?: string;
   address?: string;
   guardianName?: string;
   guardianPhone?: string;
+  classroom?: string;
+  academicYear?: string;
+  status: 'NOUVEAU' | 'REDOUBLANT' | 'TRANSFERE';
 };
 
-type Student = StudentCsvData & {
+type Student = {
   id: string;
-  enrollments: { classroom: { name: string } }[];
+  matricule: string;
+  lastName: string;
+  firstNames: string;
+  birthDate: string | null;
+  birthPlace: string | null;
+  sex: string | null;
+  address: string | null;
+  guardianName: string | null;
+  guardianPhone: string | null;
+  enrollments: {
+    isRepeating: boolean;
+    entryType: 'NEW' | 'TRANSFERRED' | null;
+    classroom: { name: string; academicYear: { name: string } };
+  }[];
+};
+
+type ImportCandidate = {
+  id: string;
+  matricule: string;
+  lastName: string;
+  firstNames: string;
+  birthDate: string | null;
+  deletedAt: string | null;
+  activeEnrollments: { classroomId: string; classroomName: string; academicYearName: string }[];
 };
 
 type ParsedRow = {
@@ -36,12 +64,15 @@ type ParsedRow = {
   data: StudentCsvData | null;
   error?: string;
   duplicate?: boolean;
+  candidates?: ImportCandidate[];
+  action?: 'CREATE' | 'LINK';
+  candidateId?: string;
 };
 
 type ImportResult = {
   row: number;
   matricule: string | null;
-  status: 'created' | 'skipped';
+  status: 'created' | 'linked' | 'skipped';
   error?: string;
 };
 
@@ -55,6 +86,13 @@ const fields: Record<string, keyof StudentCsvData> = {
   datenaissance: 'birthDate',
   datedenaissance: 'birthDate',
   birthdate: 'birthDate',
+  classe: 'classroom',
+  classroom: 'classroom',
+  annee: 'academicYear',
+  anneescolaire: 'academicYear',
+  academicyear: 'academicYear',
+  statut: 'status',
+  status: 'status',
   lieudenaissance: 'birthPlace',
   birthplace: 'birthPlace',
   sexe: 'sex',
@@ -74,6 +112,9 @@ const headers = [
   'nom',
   'prenoms',
   'date_naissance',
+  'classe',
+  'annee_scolaire',
+  'statut',
   'lieu_naissance',
   'sexe',
   'adresse',
@@ -170,6 +211,11 @@ export function parseStudentCsv(text: string): ParsedRow[] {
   if (rows.length === 0) throw new Error('Le fichier CSV est vide.');
   if (rows.length - 1 > 500) throw new Error('Le fichier ne peut pas contenir plus de 500 élèves à importer.');
 
+  return parseStudentRows(rows);
+}
+
+function parseStudentRows(rows: string[][]): ParsedRow[] {
+  if (rows.length === 0) throw new Error('Le fichier est vide.');
   const normalizedHeaders = rows[0].map(normalizeHeader);
   const fieldIndexes = new Map<number, keyof StudentCsvData>();
   normalizedHeaders.forEach((header, index) => {
@@ -177,15 +223,16 @@ export function parseStudentCsv(text: string): ParsedRow[] {
     if (field) fieldIndexes.set(index, field);
   });
   const mappedFields = new Set(fieldIndexes.values());
-  const missing = (['matricule', 'lastName', 'firstNames'] as const)
+  const missing = (['lastName', 'firstNames', 'birthDate'] as const)
     .filter((field) => !mappedFields.has(field));
   if (missing.length) {
     throw new Error(`Colonnes obligatoires manquantes : ${missing.map((field) =>
-      field === 'lastName' ? 'nom' : field === 'firstNames' ? 'prenoms' : field,
+      field === 'lastName' ? 'nom' : field === 'firstNames' ? 'prenoms' : 'date_naissance',
     ).join(', ')}.`);
   }
 
-  const seen = new Set<string>();
+  const seenMatricules = new Set<string>();
+  const seenIdentities = new Set<string>();
   return rows.slice(1).map((cells, index) => {
     const values: Partial<StudentCsvData> = {};
     for (const [column, field] of fieldIndexes) {
@@ -197,34 +244,66 @@ export function parseStudentCsv(text: string): ParsedRow[] {
             return {
               line: index + 2,
               data: null,
-              error: 'Date de naissance invalide (formats acceptés : AAAA-MM-JJ ou JJ/MM/AAAA)',
+              error: 'Date de naissance obligatoire ou invalide (formats acceptés : AAAA-MM-JJ ou JJ/MM/AAAA)',
             };
           }
           values[field] = date;
+        } else if (field === 'status') {
+          const status = normalizeHeader(value);
+          const statuses: Record<string, StudentCsvData['status']> = {
+            nouveau: 'NOUVEAU',
+            redoublant: 'REDOUBLANT',
+            redouble: 'REDOUBLANT',
+            transfere: 'TRANSFERE',
+          };
+          if (!statuses[status]) {
+            return { line: index + 2, data: null, error: 'Statut invalide (NOUVEAU, REDOUBLANT ou TRANSFERE)' };
+          }
+          values.status = statuses[status];
         } else {
-          values[field] = value;
+          Object.assign(values, { [field]: value });
         }
       }
     }
 
-    const data = values as StudentCsvData;
+    const data = { status: 'NOUVEAU' as const, ...values } as StudentCsvData;
     const missingValues = [
-      (!data.matricule || data.matricule.length < 2) && 'matricule (2 caractères minimum)',
       (!data.lastName || data.lastName.length < 2) && 'nom (2 caractères minimum)',
       (!data.firstNames || data.firstNames.length < 2) && 'prénoms (2 caractères minimum)',
+      !data.birthDate && 'date de naissance',
     ].filter(Boolean);
     if (missingValues.length) {
       return { line: index + 2, data: null, error: `Champs obligatoires manquants : ${missingValues.join(', ')}` };
     }
-    const matriculeKey = data.matricule.toLocaleUpperCase('fr-FR');
-    const duplicate = seen.has(matriculeKey);
-    seen.add(matriculeKey);
+    const matriculeKey = data.matricule?.toLocaleUpperCase('fr-FR');
+    const identityKey = [
+      normalizeHeader(data.lastName),
+      normalizeHeader(data.firstNames),
+      data.birthDate,
+    ].join('|');
+    const duplicate = Boolean(
+      (matriculeKey && seenMatricules.has(matriculeKey)) || seenIdentities.has(identityKey),
+    );
+    if (matriculeKey) seenMatricules.add(matriculeKey);
+    seenIdentities.add(identityKey);
     return {
       line: index + 2,
       data,
-      ...(duplicate ? { duplicate: true, error: 'Matricule répété dans le fichier' } : {}),
+      ...(duplicate ? { duplicate: true, error: 'Matricule ou identité répété dans le fichier' } : {}),
     };
   });
+}
+
+export async function parseStudentXlsx(file: File): Promise<ParsedRow[]> {
+  const sheet = await readSheet(file, 1);
+  if (sheet.length - 1 > 500) throw new Error('Le fichier ne peut pas contenir plus de 500 élèves à importer.');
+  const rows = sheet.map((row) => row.map((cell) => {
+    if (cell instanceof Date) {
+      return `${cell.getFullYear()}-${String(cell.getMonth() + 1).padStart(2, '0')}-${String(cell.getDate()).padStart(2, '0')}`;
+    }
+    return cell === null ? '' : String(cell);
+  }));
+  return parseStudentRows(rows);
 }
 
 function csvEscape(value: unknown) {
@@ -240,6 +319,12 @@ function downloadCsv(filename: string, rows: unknown[][]) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+type ExcelCell = string | number | boolean | Date | null;
+
+async function downloadExcel(filename: string, rows: ExcelCell[][]) {
+  await writeXlsxFile(rows, { sheet: 'Élèves' }).toFile(filename);
 }
 
 async function lireReponse<T>(response: Response, fallback: string): Promise<T> {
@@ -271,9 +356,10 @@ export function StudentsPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [form, setForm] = useState({ matricule: '', lastName: '', firstNames: '' });
+  const [form, setForm] = useState({ matricule: '', lastName: '', firstNames: '', birthDate: '' });
   const [preview, setPreview] = useState<ParsedRow[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (query = search) => {
@@ -286,23 +372,15 @@ export function StudentsPage() {
     void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Erreur de chargement'));
   }, [load]);
 
-  const existingMatricules = useMemo(
-    () => new Set(students.map((student) => student.matricule.toLocaleLowerCase('fr-FR'))),
-    [students],
-  );
   const previewCounts = useMemo(() => {
     const rows = preview ?? [];
+    const ready = (row: ParsedRow) =>
+      Boolean(row.data && !row.error && (!row.duplicate || (row.action === 'LINK' && row.candidateId)));
     return {
-      valid: rows.filter((row) =>
-        row.data && !row.duplicate &&
-        !existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR')),
-      ).length,
-      skipped: rows.filter((row) =>
-        !row.data || row.duplicate ||
-        existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR')),
-      ).length,
+      valid: rows.filter(ready).length,
+      skipped: rows.filter((row) => !ready(row)).length,
     };
-  }, [existingMatricules, preview]);
+  }, [preview]);
 
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -311,10 +389,13 @@ export function StudentsPage() {
     try {
       const response = await api.fetch('/api/students', {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          matricule: form.matricule.trim() || undefined,
+        }),
       });
       await lireReponse(response, 'Impossible de créer l’élève');
-      setForm({ matricule: '', lastName: '', firstNames: '' });
+      setForm({ matricule: '', lastName: '', firstNames: '', birthDate: '' });
       setMessage('Élève créé.');
       await load();
     } catch (cause) {
@@ -322,7 +403,7 @@ export function StudentsPage() {
     }
   };
 
-  const selectCsv = async (event: ChangeEvent<HTMLInputElement>) => {
+  const selectFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     setError(null);
     setMessage(null);
@@ -330,17 +411,50 @@ export function StudentsPage() {
     if (!file) return;
     try {
       if (file.size > 5 * 1024 * 1024) throw new Error('Le fichier dépasse la taille maximale de 5 Mo.');
-      setPreview(parseStudentCsv(await lireFichier(file)));
+      const localRows = file.name.toLocaleLowerCase('fr-FR').endsWith('.xlsx')
+        ? await parseStudentXlsx(file)
+        : file.name.toLocaleLowerCase('fr-FR').endsWith('.csv')
+          ? parseStudentCsv(await lireFichier(file))
+          : (() => { throw new Error('Format non accepté. Choisissez un fichier CSV ou Excel (.xlsx).'); })();
+      setPreviewing(true);
+      const response = await api.fetch('/api/students/import/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          students: localRows.map((row) => ({ row: row.line, student: row.data ?? {} })),
+        }),
+      });
+      const serverPreview = await lireReponse<{
+        rows: {
+          row: number;
+          status: 'READY' | 'DUPLICATE' | 'ERROR';
+          error: string | null;
+          candidates: ImportCandidate[];
+          classroom: unknown;
+        }[];
+      }>(response, 'Impossible de vérifier le fichier');
+      const byRow = new Map(serverPreview.rows.map((row) => [row.row, row]));
+      setPreview(localRows.map((row) => {
+        const checked = byRow.get(row.line);
+        if (row.error || !checked) return row;
+        return {
+          ...row,
+          error: checked.error ?? undefined,
+          duplicate: checked.status === 'DUPLICATE',
+          candidates: checked.candidates,
+          ...(checked.status === 'READY' ? { action: 'CREATE' as const } : {}),
+        };
+      }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Impossible de lire le fichier CSV');
+      setError(cause instanceof Error ? cause.message : 'Impossible de lire le fichier');
+    } finally {
+      setPreviewing(false);
     }
   };
 
-  const importCsv = async () => {
+  const importStudents = async () => {
     if (!preview) return;
     const rows = preview.filter((row) =>
-      row.data && !row.duplicate &&
-      !existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR')),
+      row.data && !row.error && (!row.duplicate || (row.action === 'LINK' && row.candidateId)),
     );
     if (rows.length === 0) {
       setError('Aucune ligne valide à importer.');
@@ -352,35 +466,43 @@ export function StudentsPage() {
     try {
       const response = await api.fetch('/api/students/import', {
         method: 'POST',
-        body: JSON.stringify({ students: rows.map((row) => ({ row: row.line, student: row.data })) }),
+        body: JSON.stringify({
+          students: rows.map((row) => ({
+            row: row.line,
+            student: row.data,
+            action: row.duplicate ? 'LINK' : 'CREATE',
+            ...(row.candidateId ? { candidateId: row.candidateId } : {}),
+          })),
+        }),
       });
       const result = await lireReponse<{
         importedCount: number;
+        createdCount: number;
+        linkedCount: number;
         skippedCount: number;
         results: ImportResult[];
-      }>(response, 'Import CSV impossible');
+      }>(response, 'Import impossible');
       const skipped = result.results.filter((item) => item.status === 'skipped');
-      const previewSkipped = preview
-        .filter((row) =>
-          !row.data || row.duplicate ||
-          existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR')),
-        )
+      const previewSkipped = preview.filter((row) =>
+        !row.data || row.error || (row.duplicate && row.action !== 'LINK'),
+      )
         .map((row) =>
-          `ligne ${row.line}: ${row.error ?? `matricule ${row.data?.matricule} déjà présent`}`,
+          `ligne ${row.line}: ${row.error ?? 'doublon non confirmé'}`,
         );
       const skippedDetails = [
         ...previewSkipped,
         ...skipped.map((item) => `ligne ${item.row}: ${item.error}`),
       ];
       setMessage(
-        `${result.importedCount} élève(s) importé(s), ${result.skippedCount + previewCounts.skipped} ligne(s) ignorée(s).` +
+        `${result.createdCount} fiche(s) créée(s), ${result.linkedCount} dossier(s) rattaché(s), ` +
+          `${result.skippedCount + previewSkipped.length} ligne(s) ignorée(s).` +
           (skippedDetails.length ? ` ${skippedDetails.join(' · ')}` : ''),
       );
       setPreview(null);
       if (fileInput.current) fileInput.current.value = '';
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Import CSV impossible');
+      setError(cause instanceof Error ? cause.message : 'Import impossible');
     } finally {
       setImporting(false);
     }
@@ -394,6 +516,15 @@ export function StudentsPage() {
         student.lastName,
         student.firstNames,
         student.birthDate ? student.birthDate.slice(0, 10) : '',
+        student.enrollments[0]?.classroom.name ?? '',
+        student.enrollments[0]?.classroom.academicYear.name ?? '',
+        student.enrollments[0]?.isRepeating
+          ? 'REDOUBLANT'
+          : student.enrollments[0]?.entryType === 'TRANSFERRED'
+            ? 'TRANSFERE'
+            : student.enrollments[0]?.entryType === 'NEW'
+              ? 'NOUVEAU'
+              : '',
         student.birthPlace,
         student.sex,
         student.address,
@@ -403,7 +534,43 @@ export function StudentsPage() {
     ]);
   };
 
-  const downloadTemplate = () => downloadCsv('modele-import-eleves.csv', [headers]);
+  const exportExcel = async () => {
+    try {
+      await downloadExcel('eleves.xlsx', [
+        headers,
+        ...students.map((student) => [
+          student.matricule,
+          student.lastName,
+          student.firstNames,
+          student.birthDate?.slice(0, 10) ?? '',
+          student.enrollments[0]?.classroom.name ?? '',
+          student.enrollments[0]?.classroom.academicYear.name ?? '',
+          student.enrollments[0]?.isRepeating
+            ? 'REDOUBLANT'
+            : student.enrollments[0]?.entryType === 'TRANSFERRED'
+              ? 'TRANSFERE'
+              : student.enrollments[0]?.entryType === 'NEW'
+                ? 'NOUVEAU'
+                : '',
+          student.birthPlace ?? '',
+          student.sex ?? '',
+          student.address ?? '',
+          student.guardianName ?? '',
+          student.guardianPhone ?? '',
+        ]),
+      ]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Export Excel impossible');
+    }
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      await downloadExcel('modele-import-eleves.xlsx', [headers]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Téléchargement du modèle impossible');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -413,10 +580,21 @@ export function StudentsPage() {
           <p className="mt-2 text-sm text-muted-foreground">Gestion, import et export des dossiers élèves.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={downloadTemplate}>Télécharger le modèle CSV</Button>
+          <Button type="button" variant="outline" onClick={() => void downloadTemplate()}>
+            Télécharger le modèle Excel
+          </Button>
           <Button type="button" variant="outline" onClick={exportCsv} disabled={students.length === 0}>
             <Download aria-hidden="true" className="h-4 w-4" />
-            Exporter {search ? 'les résultats' : 'les élèves'}
+            Exporter CSV
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void exportExcel()}
+            disabled={students.length === 0}
+          >
+            <Download aria-hidden="true" className="h-4 w-4" />
+            Exporter Excel
           </Button>
         </div>
       </header>
@@ -428,11 +606,11 @@ export function StudentsPage() {
         <CardContent>
           <form
             onSubmit={(event) => void create(event)}
-            className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
+            className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]"
           >
             <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              Matricule
-              <Input required aria-label="Matricule" placeholder="Ex. EL-2026-001" className={inputClass}
+              Matricule (facultatif)
+              <Input aria-label="Matricule facultatif" placeholder="Vide = attribution ELI automatique" className={inputClass}
                 value={form.matricule} onChange={(event) => setForm({ ...form, matricule: event.target.value })} />
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-foreground">
@@ -445,6 +623,11 @@ export function StudentsPage() {
               <Input required aria-label="Prénoms" placeholder="Prénom(s)" className={inputClass}
                 value={form.firstNames} onChange={(event) => setForm({ ...form, firstNames: event.target.value })} />
             </label>
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Date de naissance
+              <Input required aria-label="Date de naissance" type="date" className={inputClass}
+                value={form.birthDate} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} />
+            </label>
             <Button type="submit" className="h-11 px-5">Créer</Button>
           </form>
         </CardContent>
@@ -454,11 +637,12 @@ export function StudentsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileUp aria-hidden="true" className="h-5 w-5 text-primary" />
-            Importer depuis un CSV
+            Importer des élèves depuis un fichier
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Fichier UTF-8 de 5 Mo maximum. Les colonnes matricule, nom et prénoms sont obligatoires.
-            Les matricules déjà enregistrés ou répétés dans le fichier seront ignorés.
+            Fichiers Excel (.xlsx) ou CSV de 5 Mo maximum. Nom, prénoms et date de naissance sont
+            obligatoires; le matricule, la classe, l’année et le statut sont reconnus s’ils sont fournis.
+            Les doublons potentiels exigent une confirmation de rattachement avant toute inscription.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -466,35 +650,67 @@ export function StudentsPage() {
             <Input
               ref={fileInput}
               type="file"
-              accept=".csv,text/csv"
-              aria-label="Fichier CSV des élèves"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              aria-label="Fichier CSV ou Excel des élèves"
               className="h-11 max-w-full file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium"
-              onChange={(event) => void selectCsv(event)}
+              onChange={(event) => void selectFile(event)}
             />
             {preview && (
-              <Button type="button" onClick={() => void importCsv()} disabled={importing || previewCounts.valid === 0}>
-                {importing ? 'Import en cours…' : `Importer ${previewCounts.valid} ligne(s) valide(s)`}
+              <Button
+                type="button"
+                onClick={() => void importStudents()}
+                disabled={importing || previewing || previewCounts.valid === 0}
+              >
+                {importing ? 'Import en cours…' : `Importer ${previewCounts.valid} ligne(s) confirmée(s)`}
               </Button>
             )}
           </div>
+          {previewing ? <p role="status" className="text-sm text-muted-foreground">Vérification des doublons et des classes…</p> : null}
           {preview && (
             <div className="space-y-3">
               <p role="status" className="text-sm text-foreground">
                 Aperçu : {previewCounts.valid} ligne(s) prêtes, {previewCounts.skipped} ligne(s) à ignorer.
               </p>
-              {preview.filter((row) =>
-                row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
-              ).length > 0 && (
-                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-accent/50 bg-accent/15 p-3 text-sm text-foreground">
-                  {preview.filter((row) =>
-                    row.error || (row.data && existingMatricules.has(row.data.matricule.toLocaleLowerCase('fr-FR'))),
-                  ).map((row) => (
-                    <li key={row.line}>
-                      Ligne {row.line} — {row.error ?? `Matricule ${row.data?.matricule} déjà présent`}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <ul className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-accent/50 bg-accent/15 p-3 text-sm text-foreground">
+                {preview.map((row) => (
+                  <li key={row.line} className="space-y-2 border-b border-accent/30 pb-2 last:border-0">
+                    <p>
+                      Ligne {row.line}
+                      {row.error ? ` — ${row.error}` : row.duplicate ? ' — Doublon potentiel' : ' — prête'}
+                    </p>
+                    {row.duplicate && row.candidates?.length ? (
+                      <fieldset className="ml-3 space-y-1">
+                        <legend className="text-xs font-medium">
+                          Confirmer le rattachement à une fiche existante :
+                        </legend>
+                        {row.candidates.map((candidate) => (
+                          <label key={candidate.id} className="flex items-start gap-2 text-xs">
+                            <input
+                              type="radio"
+                              name={`candidate-${row.line}`}
+                              disabled={Boolean(candidate.deletedAt) || Boolean(row.error)}
+                              checked={row.candidateId === candidate.id}
+                              onChange={() => setPreview((current) => current?.map((item) =>
+                                item.line === row.line
+                                  ? { ...item, action: 'LINK', candidateId: candidate.id }
+                                  : item,
+                              ) ?? null)}
+                            />
+                            <span>
+                              {candidate.lastName} {candidate.firstNames} · {candidate.matricule}
+                              {candidate.birthDate ? ` · ${candidate.birthDate.slice(0, 10)}` : ''}
+                              {candidate.deletedAt ? ' · fiche archivée' : ''}
+                              {candidate.activeEnrollments.map((enrollment) =>
+                                ` · ${enrollment.classroomName} (${enrollment.academicYearName})`,
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </CardContent>
@@ -536,23 +752,45 @@ export function StudentsPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="h-12 px-5">Matricule</TableHead>
                 <TableHead className="h-12 px-5">Élève</TableHead>
+                <TableHead className="h-12 px-5">Date de naissance</TableHead>
                 <TableHead className="h-12 px-5">Classe active</TableHead>
+                <TableHead className="h-12 px-5">Statut</TableHead>
                 <TableHead className="h-12 px-5">Dossier</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {students.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">Aucun élève trouvé.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    Aucun élève trouvé.
+                  </TableCell>
+                </TableRow>
               ) : students.map((student) => (
                 <TableRow key={student.id}>
-                    <TableCell className="px-5 py-3 font-mono text-xs">{student.matricule}</TableCell>
-                    <TableCell className="px-5 py-3 font-semibold text-foreground">{student.lastName} {student.firstNames}</TableCell>
-                    <TableCell className="px-5 py-3 text-muted-foreground">{student.enrollments[0]?.classroom.name ?? '—'}</TableCell>
-                    <TableCell className="px-5 py-3">
-                      <Button size="sm" variant="outline" asChild>
-                        <Link to={`/eleves/${student.id}`}>Détail</Link>
-                      </Button>
-                    </TableCell>
+                  <TableCell className="px-5 py-3 font-mono text-xs">{student.matricule}</TableCell>
+                  <TableCell className="px-5 py-3 font-semibold text-foreground">
+                    {student.lastName} {student.firstNames}
+                  </TableCell>
+                  <TableCell className="px-5 py-3 text-muted-foreground">
+                    {student.birthDate?.slice(0, 10) ?? 'Non renseignée'}
+                  </TableCell>
+                  <TableCell className="px-5 py-3 text-muted-foreground">
+                    {student.enrollments[0]?.classroom.name ?? '—'}
+                  </TableCell>
+                  <TableCell className="px-5 py-3 text-muted-foreground">
+                    {student.enrollments[0]?.isRepeating
+                      ? 'Redoublant'
+                      : student.enrollments[0]?.entryType === 'TRANSFERRED'
+                        ? 'Transféré'
+                        : student.enrollments[0]?.entryType === 'NEW'
+                          ? 'Nouveau'
+                          : 'Non renseigné'}
+                  </TableCell>
+                  <TableCell className="px-5 py-3">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to={`/eleves/${student.id}`}>Détail</Link>
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

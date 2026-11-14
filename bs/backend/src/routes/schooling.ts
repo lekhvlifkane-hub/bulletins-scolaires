@@ -6,6 +6,7 @@ import { asyncHandler, HttpError } from '../lib/http';
 import { requireCsrf } from '../lib/csrf';
 import { requireAuth, requireRole, requireSchoolId } from '../middleware/auth';
 import { writeAuditLog } from '../services/audit';
+import { ensureDefaultAppreciationRules } from '../services/appreciations/rules';
 
 const router = Router();
 const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'La date de fin doit être après la date de début' });
@@ -22,10 +23,44 @@ const classroomSubjectSchema = z.object({
   classroomId: z.string().min(1),
   subjectId: z.string().min(1),
   coefficient: z.union([z.coerce.number().min(0), z.string().min(1)]),
+  teacherName: z.string().trim().max(120).nullish(),
   effectiveTo: z.coerce.date().nullable().optional(),
 });
 const coefficientUpdateSchema = z.object({
   coefficient: z.union([z.coerce.number().min(0), z.string().trim().min(1)]),
+});
+const teacherUpdateSchema = z.object({
+  teacherName: z.string().trim().max(120).nullish(),
+});
+const appreciationRuleSchema = z.object({
+  scope: z.enum(['MATIERE', 'MENTION', 'DECISION', 'GENERALE']),
+  code: z.string().trim().min(1).max(40),
+  label: z.string().trim().min(1).max(120),
+  minScore: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/),
+  maxScore: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/),
+  content: z.string().trim().min(1).max(500),
+  sortOrder: z.number().int().min(0).max(1000),
+  isActive: z.boolean(),
+}).strict().refine((rule) => {
+  const minimum = Number(rule.minScore);
+  const maximum = Number(rule.maxScore);
+  return minimum >= 0 && maximum <= 20 && minimum <= maximum;
+}, { message: 'Les seuils doivent être compris entre 0 et 20 et le minimum ne peut dépasser le maximum' });
+const appreciationRulesUpdateSchema = z.object({
+  rules: z.array(appreciationRuleSchema).min(1).max(40),
+}).strict().superRefine(({ rules }, context) => {
+  const seen = new Set<string>();
+  for (const [index, rule] of rules.entries()) {
+    const key = `${rule.scope}:${rule.code}`;
+    if (seen.has(key)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rules', index, 'code'],
+        message: 'Code répété pour cette portée',
+      });
+    }
+    seen.add(key);
+  }
 });
 router.use(requireAuth, requireRole('SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'));
 
@@ -212,6 +247,69 @@ router.get('/classroom-subjects', asyncHandler(async (req, res) => {
   });
 }));
 
+router.get('/appreciation-rules', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  await ensureDefaultAppreciationRules(schoolId);
+  const rules = await prisma.appreciationRule.findMany({
+    where: { schoolId, deletedAt: null },
+    orderBy: [{ scope: 'asc' }, { sortOrder: 'asc' }, { minScore: 'asc' }],
+  });
+  res.json({
+    rules: rules.map((rule) => ({
+      ...rule,
+      minScore: rule.minScore === null ? null : String(rule.minScore),
+      maxScore: rule.maxScore === null ? null : String(rule.maxScore),
+    })),
+  });
+}));
+
+router.put('/appreciation-rules', requireCsrf, asyncHandler(async (req, res) => {
+  if (req.currentUser!.role !== 'SCHOOL_ADMIN') {
+    throw new HttpError(403, 'Seul l’administrateur de l’établissement peut modifier ces règles');
+  }
+  const schoolId = requireSchoolId(req);
+  const { rules } = appreciationRulesUpdateSchema.parse(req.body);
+  const saved = await prisma.$transaction(
+    rules.map((rule) =>
+      prisma.appreciationRule.upsert({
+        where: {
+          schoolId_scope_code: { schoolId, scope: rule.scope, code: rule.code },
+        },
+        create: {
+          schoolId,
+          ...rule,
+          minScore: new Prisma.Decimal(rule.minScore),
+          maxScore: new Prisma.Decimal(rule.maxScore),
+        },
+        update: {
+          label: rule.label,
+          minScore: new Prisma.Decimal(rule.minScore),
+          maxScore: new Prisma.Decimal(rule.maxScore),
+          content: rule.content,
+          sortOrder: rule.sortOrder,
+          isActive: rule.isActive,
+          deletedAt: null,
+        },
+      }),
+    ),
+  );
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'APPRECIATION_RULES_UPDATED',
+    entityType: 'AppreciationRule',
+    metadata: { count: saved.length },
+  });
+  res.json({
+    rules: saved.map((rule) => ({
+      ...rule,
+      minScore: rule.minScore === null ? null : String(rule.minScore),
+      maxScore: rule.maxScore === null ? null : String(rule.maxScore),
+    })),
+  });
+}));
+
 router.post('/classroom-subjects', requireCsrf, asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const data = classroomSubjectSchema.parse(req.body);
@@ -246,6 +344,7 @@ router.post('/classroom-subjects', requireCsrf, asyncHandler(async (req, res) =>
       classroomId: classroom.id,
       subjectId: subject.id,
       coefficient: new Prisma.Decimal(String(coefficient)),
+      teacherName: data.teacherName?.trim() || null,
       ...(data.effectiveTo ? { effectiveTo: data.effectiveTo } : {}),
     },
     include: { subject: true, classroom: true },
@@ -299,6 +398,7 @@ router.patch('/classroom-subjects/:id/coefficient', requireCsrf, asyncHandler(as
         classroomId: current.classroomId,
         subjectId: current.subjectId,
         coefficient: new Prisma.Decimal(coefficientText),
+        teacherName: current.teacherName,
         effectiveFrom,
       },
       include: { subject: true, classroom: true },
@@ -326,4 +426,42 @@ router.patch('/classroom-subjects/:id/coefficient', requireCsrf, asyncHandler(as
   });
 }));
 
+router.patch('/classroom-subjects/:id/teacher', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const { teacherName } = teacherUpdateSchema.parse(req.body);
+  const current = await prisma.classroomSubject.findFirst({
+    where: { id: req.params.id, schoolId, effectiveTo: null },
+    include: { classroom: { include: { academicYear: true } }, subject: true },
+  });
+  if (!current) throw new HttpError(404, 'Affectation de discipline introuvable');
+  if (current.classroom.academicYear.status === 'CLOSED') {
+    throw new HttpError(409, "L'année scolaire est clôturée");
+  }
+  const normalized = teacherName?.trim() || null;
+  if (normalized === current.teacherName) {
+    throw new HttpError(400, 'Le nom de l’enseignant est identique à la valeur actuelle');
+  }
+  const updated = await prisma.classroomSubject.update({
+    where: { id: current.id },
+    data: { teacherName: normalized },
+    include: { subject: true, classroom: true },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'CLASSROOM_SUBJECT_TEACHER_UPDATED',
+    entityType: 'ClassroomSubject',
+    entityId: updated.id,
+    metadata: {
+      subjectId: current.subjectId,
+      classroomId: current.classroomId,
+      previousTeacherName: current.teacherName,
+      teacherName: normalized,
+    },
+  });
+  res.json({
+    classroomSubject: { ...updated, coefficient: String(updated.coefficient) },
+  });
+}));
 export const schoolingRouter=router;

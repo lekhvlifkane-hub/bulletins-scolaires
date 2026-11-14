@@ -12,7 +12,6 @@ import {
   ROLES_EDITION_BULLETIN,
   chargerBulletin,
   corrigerBulletin,
-  modifierAppreciation,
   modifierChampsLibres,
   telechargerPdf,
   type DetailBulletin,
@@ -47,7 +46,7 @@ export function BulletinDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [motif, setMotif] = useState('');
   const [champs, setChamps] = useState({ mention: '', appreciation: '' });
-  const [appreciations, setAppreciations] = useState<Record<string, string>>({});
+  const [champsModifies, setChampsModifies] = useState({ mention: false, appreciation: false });
   const [enCours, setEnCours] = useState(false);
 
   const charger = useCallback(async () => {
@@ -59,11 +58,7 @@ export function BulletinDetailPage() {
         mention: donnees.bulletin.mention ?? '',
         appreciation: donnees.bulletin.appreciation ?? '',
       });
-      setAppreciations(
-        Object.fromEntries(
-          donnees.snapshot.matieres.map((m) => [m.subjectId, m.appreciation ?? ''])
-        )
-      );
+      setChampsModifies({ mention: false, appreciation: false });
       setErreur(null);
     } catch (e) {
       setDetail(null);
@@ -79,23 +74,15 @@ export function BulletinDetailPage() {
 
   const publierChampsLibres = async () => {
     if (!detail) return;
-    const { enrollmentId, semesterId } = detail.bulletin;
+    if (!champsModifies.mention && !champsModifies.appreciation) return;
     setEnCours(true);
     try {
-      await Promise.all([
-        modifierChampsLibres(id, {
-          mention: champs.mention.trim() || null,
-          appreciation: champs.appreciation.trim() || null,
-        }),
-        ...Object.entries(appreciations).map(([subjectId, appreciation]) =>
-          modifierAppreciation({
-            enrollmentId,
-            semesterId,
-            subjectId,
-            content: appreciation.trim() || null,
-          })
-        ),
-      ]);
+      await modifierChampsLibres(id, {
+        ...(champsModifies.mention ? { mention: champs.mention.trim() || null } : {}),
+        ...(champsModifies.appreciation
+          ? { appreciation: champs.appreciation.trim() || null }
+          : {}),
+      });
       setMessage('Champs libres enregistrés.');
       await charger();
     } catch (e) {
@@ -170,9 +157,11 @@ export function BulletinDetailPage() {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground">
+            {snapshot.enTete.iefName ? `${snapshot.enTete.iefName} · ` : ''}
             {snapshot.enTete.nomEtablissement} · {snapshot.eleve.classe}
             {snapshot.eleve.niveau ? ` · ${snapshot.eleve.niveau}` : ''} ·{' '}
             {snapshot.enTete.anneeScolaire.nom} · matricule {snapshot.eleve.matricule}
+            {snapshot.eleve.isRepeating ? ' · Redoublant' : ''}
           </p>
           <p className="mt-1 text-sm">
             <span className="rounded-md border border-border px-2 py-0.5 text-xs">
@@ -239,6 +228,9 @@ export function BulletinDetailPage() {
               <tr key={matiere.subjectId} className="border-t border-border align-top">
                 <td className="whitespace-normal p-3">
                   <span className="font-medium">{matiere.subjectName}</span>
+                  {matiere.teacherName ? (
+                    <p className="text-xs text-muted-foreground">Enseignant : {matiere.teacherName}</p>
+                  ) : null}
                   {!matiere.comptabilisee ? (
                     <span className="ml-1 text-xs text-muted-foreground">(non comptabilisée)</span>
                   ) : null}
@@ -363,25 +355,39 @@ export function BulletinDetailPage() {
           {modifiable ? (
             <>
               <label className="block text-sm">
-                <span className="text-muted-foreground">Mention</span>
+                <span className="text-muted-foreground">
+                  Mention{bulletin.mentionAuto ? ' · générée automatiquement' : ' · modifiée'}
+                </span>
                 <Input
                   className="mt-1 h-11"
                   value={champs.mention}
                   maxLength={120}
-                  onChange={(event) => setChamps({ ...champs, mention: event.target.value })}
+                  onChange={(event) => {
+                    setChamps({ ...champs, mention: event.target.value });
+                    setChampsModifies((current) => ({ ...current, mention: true }));
+                  }}
                 />
               </label>
               <label className="block text-sm">
-                <span className="text-muted-foreground">Appréciation générale</span>
+                <span className="text-muted-foreground">
+                  Appréciation générale{bulletin.appreciationAuto ? ' · générée automatiquement' : ' · modifiée'}
+                </span>
                 <textarea
                   className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
                   rows={3}
                   maxLength={500}
                   value={champs.appreciation}
-                  onChange={(event) => setChamps({ ...champs, appreciation: event.target.value })}
+                  onChange={(event) => {
+                    setChamps({ ...champs, appreciation: event.target.value });
+                    setChampsModifies((current) => ({ ...current, appreciation: true }));
+                  }}
                 />
               </label>
-              <Button size="sm" onClick={() => void publierChampsLibres()} disabled={enCours}>
+              <Button
+                size="sm"
+                onClick={() => void publierChampsLibres()}
+                disabled={enCours || (!champsModifies.mention && !champsModifies.appreciation)}
+              >
                 Enregistrer les champs libres
               </Button>
             </>
@@ -406,6 +412,11 @@ export function BulletinDetailPage() {
           <p className="text-xs text-muted-foreground">
             La décision du conseil est annuelle et n’apparaît qu’après validation dans le bilan annuel.
           </p>
+          {snapshot.decisionProposee ? (
+            <p className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+              Proposition automatique à valider par le conseil : {snapshot.decisionProposee}
+            </p>
+          ) : null}
         </section>
 
         <section className="space-y-3 rounded-lg border border-border p-4">

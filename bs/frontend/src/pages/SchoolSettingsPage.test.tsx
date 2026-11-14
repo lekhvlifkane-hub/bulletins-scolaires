@@ -14,6 +14,7 @@ const ECOLE = {
   id: 'sch-1',
   name: 'Lycée Test',
   officialName: null,
+  iefName: 'IEF Thiès',
   city: null,
   address: null,
   phone: null,
@@ -40,6 +41,17 @@ const ECOLE = {
 };
 
 type Appel = { url: string; method: string; corps: Record<string, unknown> };
+const RULES = [{
+  id: 'rule-1',
+  scope: 'MATIERE',
+  code: 'MATIERE_0_5',
+  label: 'Très faible',
+  minScore: '0',
+  maxScore: '5',
+  content: 'Très faible',
+  sortOrder: 1,
+  isActive: true,
+}];
 
 function reponseJson(corps: unknown) {
   return { ok: true, status: 200, headers: new Headers(), json: async () => corps };
@@ -70,6 +82,13 @@ function installer() {
     }
 
     const corps = init.body ? JSON.parse(String(init.body)) : {};
+    if (url === '/api/schooling/appreciation-rules' && method === 'GET') {
+      return reponseJson({ rules: RULES });
+    }
+    if (url === '/api/schooling/appreciation-rules' && method === 'PUT') {
+      appels.push({ url, method, corps });
+      return reponseJson({ rules: corps.rules });
+    }
     if (method === 'PATCH') {
       appels.push({ url, method, corps });
       return reponseJson({ school: { ...ECOLE, ...corps } });
@@ -119,6 +138,9 @@ describe('SchoolSettingsPage — règles de calcul', () => {
       target: { value: '3' },
     });
     fireEvent.change(screen.getByLabelText(/Poids du semestre 2/), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('IEF de rattachement'), {
+      target: { value: 'IEF de Tivaouane' },
+    });
     fireEvent.click(screen.getByLabelText(/Compter une absence comme 0/));
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
 
@@ -130,6 +152,7 @@ describe('SchoolSettingsPage — règles de calcul', () => {
     expect(appel.corps.absencesComptentZero).toBe(true);
     expect(appel.corps.poidsCompositions).toBe(3);
     expect(appel.corps.poidsSemestre2).toBe(2);
+    expect(appel.corps.iefName).toBe('IEF de Tivaouane');
     expect(typeof appel.corps.arrondiDecimales).toBe('number');
     expect(await screen.findByText('Paramètres enregistrés')).toBeInTheDocument();
   });
@@ -181,5 +204,22 @@ describe('SchoolSettingsPage — règles de calcul', () => {
 
     expect(await screen.findByText(/Poids des devoirs : saisir un nombre/)).toBeInTheDocument();
     expect(appels).toHaveLength(0);
+  });
+
+  it('permet de personnaliser les règles d’appréciation automatique', async () => {
+    const { appels } = installer();
+    rendre();
+    await screen.findByDisplayValue('Lycée Test');
+    fireEvent.change(screen.getByLabelText('Libellé MATIERE_0_5'), {
+      target: { value: 'À renforcer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les règles d’appréciation' }));
+
+    await waitFor(() => expect(appels).toHaveLength(1));
+    expect(appels[0].method).toBe('PUT');
+    expect(appels[0].url).toBe('/api/schooling/appreciation-rules');
+    expect(appels[0].corps.rules).toEqual([
+      expect.objectContaining({ code: 'MATIERE_0_5', label: 'À renforcer' }),
+    ]);
   });
 });

@@ -54,6 +54,7 @@ type SessionSchool = {
   id: string;
   name: string;
   officialName: string | null;
+  iefName: string;
   city: string | null;
   address: string | null;
   phone: string | null;

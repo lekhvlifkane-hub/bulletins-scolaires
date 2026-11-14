@@ -13,6 +13,7 @@ export async function cleanTestDb() {
   await prisma.$transaction([
     prisma.councilDecision.deleteMany(),
     prisma.appreciation.deleteMany(),
+    prisma.appreciationRule.deleteMany(),
     prisma.attendanceRecord.deleteMany(),
     prisma.annualSummary.deleteMany(),
     prisma.reportCard.deleteMany(),

@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 
 const schema = z.object({
   schoolName: z.string().trim().min(2, "Nom de l'établissement trop court"),
+  iefName: z.string().trim().min(2).max(120),
   city: z.string().trim().min(1, 'Ville requise'),
   phone: z.string().trim().min(1, 'Téléphone requis'),
   adminName: z.string().trim().min(2, "Nom de l'administrateur trop court"),
@@ -34,6 +35,7 @@ export function SchoolRegistrationPage() {
     resolver: zodResolver(schema),
     defaultValues: {
       schoolName: '',
+      iefName: 'IEF Thiès',
       city: '',
       phone: '',
       adminName: '',
@@ -99,6 +101,17 @@ export function SchoolRegistrationPage() {
               {...register('schoolName')}
             />
             {errors.schoolName && <p className="text-xs text-destructive">{errors.schoolName.message}</p>}
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="iefName">
+              IEF de rattachement
+            </label>
+            <input
+              id="iefName"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              {...register('iefName')}
+            />
+            {errors.iefName && <p className="text-xs text-destructive">{errors.iefName.message}</p>}
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">

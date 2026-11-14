@@ -91,6 +91,7 @@ function snapshot(overrides: Partial<SnapshotBulletin> = {}): SnapshotBulletin {
       etablissementId: 'sc-1',
       nomEtablissement: 'Lycée de Touba Toul',
       nomOfficiel: 'LYCÉE DE TOUBA TOUL',
+      iefName: 'IEF Thiès',
       ville: 'Touba Toul',
       adresse: 'Quartier Darou Salam',
       telephone: '+221 33 000 00 00',
@@ -242,6 +243,8 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     assertRenduSain(resultat.journal);
 
     const texte = texteDe(resultat.journal);
+    expect(texte).toContain('IEF THIÈS');
+    expect(texte.indexOf('IEF THIÈS')).toBeLessThan(texte.indexOf('LYCÉE DE TOUBA TOUL'));
     expect(texte).toContain('LYCÉE DE TOUBA TOUL');
     expect(texte).toContain('BULLETIN DE NOTES');
     expect(texte).toContain('Ndiaye');

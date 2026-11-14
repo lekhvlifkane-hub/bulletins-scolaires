@@ -145,8 +145,12 @@ function resumeBulletin(card: ReportCard) {
     motifs: card.motifs,
     absences: snapshot.absences ?? null,
     mention: card.mention,
+    mentionAuto: card.mentionAuto,
     decisionConseil: null,
+    decisionProposee: snapshot.decisionProposee ?? null,
+    decisionAuto: card.decisionAuto,
     appreciation: card.appreciation,
+    appreciationAuto: card.appreciationAuto,
     genereLe: card.genereLe?.toISOString() ?? null,
     valideLe: card.valideLe?.toISOString() ?? null,
     publieLe: card.publieLe?.toISOString() ?? null,
@@ -182,9 +186,13 @@ function resumeBilan(bilan: AnnualSummary) {
     motifs: bilan.motifs,
     absences: snapshot?.absences ?? null,
     mention: bilan.mention,
+    mentionAuto: bilan.mentionAuto,
     decisionConseil: snapshot?.decisionConseil ?? null,
+    decisionProposee: snapshot?.decisionProposee ?? null,
+    decisionAuto: bilan.decisionAuto,
     decisionConseilValideeLe: snapshot?.decisionConseilValideeLe ?? null,
     appreciation: bilan.appreciation,
+    appreciationAuto: bilan.appreciationAuto,
     genereLe: bilan.genereLe?.toISOString() ?? null,
     publieLe: bilan.publieLe?.toISOString() ?? null,
   };
@@ -209,8 +217,12 @@ function metaDeBilan(bilan: AnnualSummary): MetaBulletin {
   };
 }
 
-function textesDe(card: ReportCard): BulletinPourPdf['textes'] {
-  return { mention: card.mention, appreciation: card.appreciation };
+function textesDe(card: ReportCard, snapshot: ReturnType<typeof lireSnapshot>): BulletinPourPdf['textes'] {
+  return {
+    mention: card.mention,
+    appreciation: card.appreciation,
+    decisionProposee: snapshot.decisionProposee ?? null,
+  };
 }
 
 function envoyerPdf(res: Response, nom: string, produit: { pdf: Buffer; pages: number }): void {
@@ -415,7 +427,7 @@ router.get('/report-cards/pdf', asyncHandler(async (req, res) => {
 
   const items: BulletinPourPdf[] = cartes.map((card) => {
     const snapshot = lireSnapshot(card);
-    return { snapshot, meta: metaDeBulletin(card), textes: textesDe(card) };
+    return { snapshot, meta: metaDeBulletin(card), textes: textesDe(card, snapshot) };
   });
 
   const produit = items.length === 1 ? await genererPdfBulletin(items[0]) : await genererPdfBulletins(items);
@@ -616,7 +628,7 @@ router.get('/report-cards/:id/pdf', asyncHandler(async (req, res) => {
   const produit = await genererPdfBulletin({
     snapshot,
     meta: metaDeBulletin(card),
-    textes: textesDe(card),
+    textes: textesDe(card, snapshot),
   });
   envoyerPdf(res, `bulletin-${snapshot.eleve.matricule}-S${snapshot.enTete.semestre.numero}-v${card.version}`, produit);
 }));
@@ -932,6 +944,8 @@ router.patch('/annual-summaries/:id', requireCsrf, asyncHandler(async (req, res)
     data: {
       ...(corps.mention !== undefined ? { mention: corps.mention ?? null } : {}),
       ...(corps.appreciation !== undefined ? { appreciation: corps.appreciation ?? null } : {}),
+      ...(corps.mention !== undefined ? { mentionAuto: false } : {}),
+      ...(corps.appreciation !== undefined ? { appreciationAuto: false } : {}),
       snapshot: nextSnapshot as unknown as Prisma.InputJsonValue,
     },
   });

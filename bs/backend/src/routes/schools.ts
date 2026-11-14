@@ -59,6 +59,7 @@ const schoolSchema = z
   .object({
     name: z.string().trim().min(2, 'Nom trop court'),
     officialName: z.string().trim().min(2).optional(),
+    iefName: z.string().trim().min(2).max(120).optional(),
     city: z.string().trim().optional(),
     address: z.string().trim().optional(),
     phone: z.string().trim().optional(),
@@ -74,6 +75,7 @@ const schoolSchema = z
 
 const schoolRegisterSchema = z.object({
   schoolName: z.string().trim().min(2, "Nom de l'établissement trop court"),
+  iefName: z.string().trim().min(2).max(120).optional(),
   city: z.string().trim().min(1, 'Ville requise'),
   phone: z.string().trim().min(1, 'Téléphone requis'),
   adminName: z.string().trim().min(2, "Nom de l'administrateur trop court"),
@@ -104,6 +106,7 @@ router.post(
       const school = await tx.school.create({
         data: {
           name: data.schoolName,
+          ...(data.iefName ? { iefName: data.iefName } : {}),
           city: data.city,
           phone: data.phone,
           status: 'PENDING',

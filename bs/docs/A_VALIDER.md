@@ -5,8 +5,7 @@
 - [ ] Formule de la moyenne annuelle — *implémentation phase 4* : moyenne des deux semestres pondérée par `poidsSemestres` (1/1 par défaut) ; si un semestre manque, l'annuelle est `null` (règle `annuelSiSemestreManquant`) et le motif est affiché, jamais une valeur inventée.
 - [ ] Mode de classement (ex æquo) et arrondi — *implémentation phase 4* : rangs standard `1, 2, 2, 4` (`rangMode`, mode `dense` disponible) ; arrondi uniquement à l'affichage (`arrondiDecimales`, `half-up`), la valeur exacte reste visible en infobulle.
 - ⚠️ Ces règles (moyenne par matière, pondérations, barème, absences, rangs, arrondi, poids des semestres, moyenne annuelle) se règlent depuis l'écran **Paramètres établissement → Règles de calcul** par un administrateur d'établissement. Les valeurs par défaut restent celles décrites ci-dessus tant que l'établissement ne les a pas modifiées.
-- [ ] Mentions (seuils : Tableau d'honneur, Félicitations, Encouragements, Avertissement...)
-- [ ] Règles de décision du conseil de classe
+- [ ] Mentions, appréciations et décisions proposées : seuils et textes initiaux fournis à titre de base modifiable dans **Paramètres établissement → Appréciations automatiques** ; les libellés, seuils et modèles doivent être validés par chaque établissement. Une proposition automatique n'est jamais publiée comme décision officielle du conseil.
 - [ ] En-tête administratif du bulletin (devise, ministère, inspection)
 - [ ] Numéro d'agrément, cachet, signataires autorisés
 - [ ] Barème et nombre de devoirs / compositions
@@ -16,10 +15,10 @@
 
 ## Phase 5 — bulletins, comparaison et bilan annuel
 
-- [ ] Mentions et décision du conseil **ne sont pas calculées automatiquement** : l'établissement les saisit sur le bulletin (brouillon) avant publication. Les seuils (« Tableau d'honneur », « Félicitations », « Encouragements », « Avertissement ») restent à nous communiquer si vous voulez un remplissage automatique.
+- [x] Mention et appréciation générale : propositions générées à partir des seuils/modèles configurés, modifiables avant publication et conservées lors d'une régénération si un utilisateur les a remplacées. Les décisions calculées restent indicatives et ne remplacent jamais la validation dédiée du conseil de classe.
 - [ ] Moyenne annuelle **par matière** : implémentation actuelle = pondération des moyennes S1 et S2 par `poidsSemestres` (1/1 par défaut), avec `annuelSiSemestreManquant` pour conduire la règle quand un semestre n'a pas de moyenne. À confirmer : certaines pratiques font la moyenne annuelle par matière sur l'ensemble des notes de l'année.
 - [ ] **Mise en page du PDF** : `docs/assets/` ne contenait aucun exemple de bulletin (un simple `LISEZ-MOI` placeholder). Le A4 produit est donc une **maquette** (en-tête établissement, tableau des matières, synthèse, rang, mention, pied de page) validable visuellement, pas un document homologué. Aucun numéro d'agrément, aucune mention ministérielle, aucune signature n'est inventé : ces champs restent vides tant que l'établissement ne les fournit pas.
-- [ ] Appréciations par matière : saisie libre sur le bulletin avant publication, conservées lors d'une régénération. Le format attendu par le conseil de classe (longueur, qui les rédige) reste à préciser.
+- [x] Appréciations par matière : proposées selon la moyenne, puis modifiables par l'établissement ; les textes manuels sont distingués des textes automatiques et conservés lors d'une régénération.
 - [ ] Impression par lot : plafond fixé à **60 bulletins** (ou 60 bilans) par PDF, pour tenir la mémoire du serveur. À ajuster si l'établissement imprime des classes plus nombreuses en une fois.
 
 ## Phase 6 — vie scolaire, appréciations et conseil

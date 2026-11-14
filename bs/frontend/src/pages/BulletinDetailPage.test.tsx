@@ -291,7 +291,7 @@ describe('BulletinDetailPage — snapshot figé', () => {
     const { appels } = ouvrir(detail('BOUILLON'));
     await screen.findByText('Mathématiques');
 
-    const mention = screen.getByLabelText('Mention') as HTMLInputElement;
+    const mention = screen.getByLabelText(/^Mention/) as HTMLInputElement;
     fireEvent.change(mention, { target: { value: 'Bien' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les champs libres' }));
 
@@ -302,25 +302,12 @@ describe('BulletinDetailPage — snapshot figé', () => {
     expect(patch.csrf).toBe('jeton-test');
     const corps = JSON.parse(patch.body!) as Record<string, unknown>;
     expect(corps.mention).toBe('Bien');
-    // Un champ laissé vide part à null : rien n'est inventé.
-    expect(corps.appreciation).toBeNull();
+    // Un champ inchangé n'est pas envoyé : son texte automatique reste préservé.
+    expect(corps).not.toHaveProperty('appreciation');
     const appreciations = appels.filter(
       (appel) => appel.method === 'PUT' && appel.url === '/api/school-life/appreciations'
     );
-    expect(appreciations.map((appel) => JSON.parse(appel.body!))).toEqual([
-      {
-        enrollmentId: 'enc-1',
-        semesterId: 'sem-1',
-        subjectId: 'sub-math',
-        content: '',
-      },
-      {
-        enrollmentId: 'enc-1',
-        semesterId: 'sem-1',
-        subjectId: 'sub-hige',
-        content: '',
-      },
-    ]);
+    expect(appreciations).toHaveLength(0);
   });
 
   it('gèle un bulletin publié : lecture seule et correction motivée uniquement', async () => {

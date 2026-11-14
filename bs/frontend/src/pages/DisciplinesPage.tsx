@@ -15,6 +15,7 @@ type Subject = { id: string; name: string; code: string };
 type ClassroomSubject = {
   id: string;
   coefficient: string;
+  teacherName?: string | null;
   effectiveFrom: string;
   effectiveTo: string | null;
   subject: Subject;
@@ -41,8 +42,11 @@ export function DisciplinesPage() {
   const [classroomId, setClassroomId] = useState('');
   const [subjectId, setSubjectId] = useState('');
   const [coefficient, setCoefficient] = useState('1');
+  const [teacherName, setTeacherName] = useState('');
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
   const [editedCoefficient, setEditedCoefficient] = useState('');
+  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
+  const [editedTeacherName, setEditedTeacherName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,16 +126,47 @@ export function DisciplinesPage() {
     try {
       const response = await api.fetch('/api/schooling/classroom-subjects', {
         method: 'POST',
-        body: JSON.stringify({ classroomId, subjectId, coefficient }),
+        body: JSON.stringify({ classroomId, subjectId, coefficient, teacherName: teacherName.trim() || null }),
       });
       await lireReponse<{ classroomSubject: ClassroomSubject }>(
         response,
         'Impossible d’affecter la discipline à la classe',
       );
       setMessage('Discipline affectée à la classe avec le coefficient indiqué.');
+      setTeacherName('');
       await loadPage();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible d’affecter la discipline');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateTeacherName = async (
+    event: FormEvent<HTMLFormElement>,
+    assignment: ClassroomSubject,
+  ) => {
+    event.preventDefault();
+    setError(null);
+    setMessage(null);
+    setSaving(true);
+    try {
+      const response = await api.fetch(
+        `/api/schooling/classroom-subjects/${assignment.id}/teacher`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ teacherName: editedTeacherName.trim() || null }),
+        },
+      );
+      await lireReponse<{ classroomSubject: ClassroomSubject }>(
+        response,
+        'Impossible de modifier l’enseignant',
+      );
+      setEditingTeacherId(null);
+      setMessage(`Enseignant de ${assignment.subject.name} mis à jour.`);
+      await loadPage();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Impossible de modifier l’enseignant');
     } finally {
       setSaving(false);
     }
@@ -297,6 +332,16 @@ export function DisciplinesPage() {
                   required
                 />
               </label>
+              <label className="space-y-1.5 text-xs font-semibold text-slate-600 sm:col-span-2">
+                Enseignant (facultatif)
+                <input
+                  className={inputClass}
+                  aria-label="Enseignant de la discipline"
+                  value={teacherName}
+                  onChange={(event) => setTeacherName(event.target.value)}
+                  maxLength={120}
+                />
+              </label>
               <div className="self-end">
                 <Button type="submit" disabled={saving || !availableSubjects.length || !classroomId}>
                   {saving ? 'Enregistrement…' : 'Affecter la discipline'}
@@ -329,6 +374,7 @@ export function DisciplinesPage() {
                   <th className="px-5 py-3">Niveau / série</th>
                   <th className="px-5 py-3">Année scolaire</th>
                   <th className="px-5 py-3">Discipline</th>
+                  <th className="px-5 py-3">Enseignant</th>
                   <th className="px-5 py-3">Coefficient</th>
                   <th className="px-5 py-3">Action</th>
                 </tr>
@@ -343,6 +389,49 @@ export function DisciplinesPage() {
                     </td>
                     <td className="px-5 py-3 text-slate-600">{assignment.classroom.academicYear.name}</td>
                     <td className="px-5 py-3 text-slate-600">{assignment.subject.name}</td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {editingTeacherId === assignment.id ? (
+                        <form
+                          className="flex items-center gap-2"
+                          onSubmit={(event) => void updateTeacherName(event, assignment)}
+                        >
+                          <input
+                            className={`${inputClass} h-9 min-w-32`}
+                            aria-label={`Enseignant ${assignment.subject.name} ${assignment.classroom.name}`}
+                            value={editedTeacherName}
+                            maxLength={120}
+                            onChange={(event) => setEditedTeacherName(event.target.value)}
+                          />
+                          <Button type="submit" size="sm" disabled={saving}>Enregistrer</Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={saving}
+                            onClick={() => setEditingTeacherId(null)}
+                          >
+                            Annuler
+                          </Button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span>{assignment.teacherName || 'Non renseigné'}</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Modifier l’enseignant de ${assignment.subject.name} ${assignment.classroom.name}`}
+                            disabled={saving}
+                            onClick={() => {
+                              setEditingTeacherId(assignment.id);
+                              setEditedTeacherName(assignment.teacherName ?? '');
+                            }}
+                          >
+                            Modifier
+                          </Button>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-5 py-3 font-semibold text-slate-800">
                       {editingAssignmentId === assignment.id ? (
                         <form
@@ -383,6 +472,7 @@ export function DisciplinesPage() {
                           type="button"
                           size="sm"
                           variant="outline"
+                          aria-label={`Modifier le coefficient de ${assignment.subject.name} ${assignment.classroom.name}`}
                           disabled={saving}
                           onClick={() => {
                             setEditingAssignmentId(assignment.id);

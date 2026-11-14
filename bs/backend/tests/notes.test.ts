@@ -873,6 +873,27 @@ describe('Phase 4 — affectations discipline / classe', () => {
     expect(liste.body.classroomSubjects.map((c: { coefficient: string }) => c.coefficient)).toContain('2.5');
   });
 
+  it('conserve le nom de l’enseignant sur l’affectation de la discipline', async () => {
+    const affectation = await admin
+      .post('/api/schooling/classroom-subjects')
+      .set('x-csrf-token', await csrf(admin))
+      .send({
+        classroomId: ctx.classroomId,
+        subjectId: philoId,
+        coefficient: '2',
+        teacherName: 'Mme Fall',
+      });
+    expect(affectation.status, JSON.stringify(affectation.body)).toBe(201);
+    expect(affectation.body.classroomSubject.teacherName).toBe('Mme Fall');
+
+    const updated = await admin
+      .patch(`/api/schooling/classroom-subjects/${affectation.body.classroomSubject.id}/teacher`)
+      .set('x-csrf-token', await csrf(admin))
+      .send({ teacherName: 'M. Diop' });
+    expect(updated.status, JSON.stringify(updated.body)).toBe(200);
+    expect(updated.body.classroomSubject.teacherName).toBe('M. Diop');
+  });
+
   it('refuse le doublon discipline / classe', async () => {
     const res = await admin
       .post('/api/schooling/classroom-subjects')

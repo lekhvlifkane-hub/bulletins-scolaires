@@ -61,6 +61,7 @@ describe("Règles de calcul de l'établissement", () => {
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.school).toMatchObject({
+      iefName: 'IEF Thiès',
       regleCalculMatiere: 'POIDS_GROUPES',
       poidsDevoirs: '1',
       poidsCompositions: '1',
@@ -92,12 +93,14 @@ describe("Règles de calcul de l'établissement", () => {
     const res = await agent
       .patch(`/api/schools/${school.id}`)
       .set('x-csrf-token', csrf)
-      .send(REGLES_MODIFIEES);
+      .send({ ...REGLES_MODIFIEES, iefName: 'IEF Thiès - Inspection A' });
 
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.school.regleCalculMatiere).toBe('MOYENNE_TOUTES_NOTES');
+    expect(res.body.school.iefName).toBe('IEF Thiès - Inspection A');
 
     const enBase = await prisma.school.findUniqueOrThrow({ where: { id: school.id } });
+    expect(enBase.iefName).toBe('IEF Thiès - Inspection A');
     expect(enBase.poidsCompositions.toString()).toBe('3');
     expect(enBase.annuelSiSemestreManquant).toBe('PARTIEL');
 

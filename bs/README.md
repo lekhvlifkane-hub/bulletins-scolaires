@@ -111,6 +111,10 @@ La page **Vie scolaire** donne accès aux absences/retards, appréciations, déc
 
 Les écritures exigent une session et un jeton CSRF (`X-CSRF-Token`). Les bulletins et bilans figent les totaux d'absences/retards ; les bulletins figent aussi les appréciations disciplinaires, et les bilans uniquement les décisions validées.
 
+Les appréciations de matière, mentions et appréciations générales sont proposées selon des règles modifiables dans **Paramètres établissement → Appréciations automatiques**. Les décisions issues des seuils ne sont que des propositions : seule une décision de conseil validée est officielle. À la création d'un élève, le matricule peut être laissé vide ; le serveur attribue alors le prochain `ELI###`. L'affectation d'une discipline accepte aussi un nom d'enseignant facultatif, et le redoublement est marqué sur l'inscription de l'année.
+
+Dans **Élèves**, les secrétaires et administrateurs peuvent importer un fichier CSV ou Excel à partir du modèle téléchargeable, vérifier l'aperçu et exporter la liste en CSV ou Excel. Le nom, les prénoms et la date de naissance sont requis pour les nouvelles fiches. Un matricule existant ou une correspondance nom/prénoms/date de naissance bloque la création automatique et demande de confirmer le rattachement à la fiche existante ; les élèves redoublants conservent ainsi leur matricule et leur historique. Les paramètres de l'établissement permettent aussi de modifier l'IEF (par défaut **IEF Thiès**) et son logo, qui sont figés dans les nouveaux bulletins et bilans. Chaque établissement est limité à trois comptes non supprimés.
+
 ## Parcours d'interface
 
 Les tests Playwright (API simulée pour isoler l'interface) couvrent le tableau de bord, l'enregistrement d'une absence, la saisie de notes en largeur mobile et la page 404 :

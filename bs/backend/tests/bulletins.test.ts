@@ -47,6 +47,14 @@ describe('Phase 5 — snapshot du bulletin', () => {
   });
 
   it('fige les notes, coefficients, règles et classements utilisés', async () => {
+    await prisma.classroomSubject.update({
+      where: { id: ctx.mathsCsf },
+      data: { teacherName: 'Mme Fall' },
+    });
+    await prisma.enrollment.update({
+      where: { id: ctx.eleves[0].enrollmentId },
+      data: { isRepeating: true },
+    });
     const { card, cree } = await genererBulletin({
       schoolId: ctx.schoolId,
       enrollmentId: ctx.eleves[0].enrollmentId,
@@ -65,6 +73,9 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(card.totalPoints?.toString()).toBe('76');
     expect(card.totalCoeficients?.toString()).toBe('5');
     expect(card.incomplet).toBe(false);
+    expect(card.mention).toBe('Bien');
+    expect(card.mentionAuto).toBe(true);
+    expect(card.appreciationAuto).toBe(true);
 
     const snapshot = lireSnapshot(card);
     expect(snapshot.versionSchema).toBe(1);
@@ -72,11 +83,13 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(snapshot.enTete.anneeScolaire.nom).toBe('2025-2026');
     expect(snapshot.enTete.semestre.numero).toBe(1);
     expect(snapshot.eleve.classe).toBe('TS 1');
+    expect(snapshot.eleve.isRepeating).toBe(true);
     expect(snapshot.regles.poidsGroupes).toEqual({ DEVOIR: '1', COMPOSITION: '1', AUTRE: '0' });
     expect(snapshot.regles.formuleMatiere).toBe('POIDS_GROUPES');
     expect(snapshot.matieres).toHaveLength(2);
 
     const maths = snapshot.matieres.find((m) => m.subjectCode === 'MATH');
+    expect(maths?.teacherName).toBe('Mme Fall');
     expect(maths?.moyenne).toBe('16');
     expect(maths?.moyenneAffichee).toBe('16.00');
     expect(maths?.coefficient).toBe('3');
@@ -98,6 +111,10 @@ describe('Phase 5 — snapshot du bulletin', () => {
       retards: 0,
     });
     expect(snapshot.continuite.semestrePrecedent).toBeNull();
+    expect(snapshot.appreciation).toContain('Eleve');
+    expect(snapshot.decisionProposee).toBe("Tableau d'honneur");
+    expect(card.decisionConseil).toBeNull();
+    expect(snapshot.matieres.every((matiere) => matiere.appreciationAuto)).toBe(true);
 
     // la génération est auditée même appelée sans requête HTTP
     const journal = await prisma.auditLog.findFirst({
@@ -105,6 +122,34 @@ describe('Phase 5 — snapshot du bulletin', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(journal?.entityId).toBe(card.id);
+  });
+
+  it('conserve les textes globaux modifiés lors d’une régénération', async () => {
+    const { card } = await genererBulletin({
+      schoolId: ctx.schoolId,
+      enrollmentId: ctx.eleves[0].enrollmentId,
+      semesterId: ctx.semestre1Id,
+      userId: ctx.userId,
+    });
+    await modifierChampsLibres({
+      schoolId: ctx.schoolId,
+      reportCardId: card.id,
+      userId: ctx.userId,
+      mention: 'Mention validée par l’établissement',
+      appreciation: 'Texte relu par le conseil.',
+    });
+
+    const regenerated = await genererBulletin({
+      schoolId: ctx.schoolId,
+      enrollmentId: ctx.eleves[0].enrollmentId,
+      semesterId: ctx.semestre1Id,
+      userId: ctx.userId,
+    });
+
+    expect(regenerated.card.mention).toBe('Mention validée par l’établissement');
+    expect(regenerated.card.appreciation).toBe('Texte relu par le conseil.');
+    expect(regenerated.card.mentionAuto).toBe(false);
+    expect(regenerated.card.appreciationAuto).toBe(false);
   });
 
   it('un brouillon régénéré remplace la même version, sans multipliquer les lignes', async () => {
@@ -283,7 +328,10 @@ describe('Phase 5 — snapshot du bulletin', () => {
       ],
     });
     expect(modifie.mention).toBe('Félicitations');
+    expect(modifie.mentionAuto).toBe(false);
+    expect(modifie.appreciationAuto).toBe(true);
     expect(lireSnapshot(modifie).matieres[0].appreciation).toBe('Très bon trimestre.');
+    expect(lireSnapshot(modifie).matieres[0].appreciationAuto).toBe(false);
 
     await publierBulletins({ schoolId: ctx.schoolId, ids: [card.id], userId: ctx.userId });
     await expect(
@@ -416,6 +464,10 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(bilan.annuelle.calculable).toBe(true);
     expect(bilan.annuelle.rangAnnuel).toBe(1);
     expect(bilan.matieres.find((m) => m.subjectName === 'Mathématiques')?.annuelle).toBe('17.5');
+    expect(bilan.mention).toBe('Très bien');
+    expect(bilan.appreciation).toContain('Eleve');
+    expect(bilan.decisionProposee).toBe('Félicitations');
+    expect(bilan.decisionConseil).toBeNull();
 
     const { summary } = await genererBilanAnnuel({
       schoolId: ctx.schoolId,
@@ -427,6 +479,27 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(summary.s2ReportCardId).toBe(s2.card.id);
     expect(summary.moyenneAnnuelleExacte).toBe('16.7');
     expect(summary.calculable).toBe(true);
+    expect(summary.mention).toBe('Très bien');
+    expect(summary.mentionAuto).toBe(true);
+    expect(summary.appreciationAuto).toBe(true);
+
+    await prisma.annualSummary.update({
+      where: { id: summary.id },
+      data: {
+        mention: 'Mention annuelle saisie',
+        mentionAuto: false,
+        appreciation: 'Texte annuel saisi',
+        appreciationAuto: false,
+      },
+    });
+    const regenere = await genererBilanAnnuel({
+      schoolId: ctx.schoolId,
+      enrollmentId: ctx.eleves[0].enrollmentId,
+      academicYearId: ctx.academicYearId,
+      userId: ctx.userId,
+    });
+    expect(regenere.summary.mention).toBe('Mention annuelle saisie');
+    expect(regenere.summary.appreciation).toBe('Texte annuel saisi');
   });
 
   it('le bilan annuel refuse une moyenne sur un seul semestre', async () => {

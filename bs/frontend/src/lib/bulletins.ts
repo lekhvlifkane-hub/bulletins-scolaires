@@ -35,8 +35,12 @@ export interface BulletinResume {
   motifs: string[];
   absences?: SnapshotBulletin['absences'] | null;
   mention: string | null;
+  mentionAuto: boolean;
   decisionConseil: string | null;
+  decisionProposee: string | null;
+  decisionAuto: boolean;
   appreciation: string | null;
+  appreciationAuto: boolean;
   genereLe: string | null;
   valideLe: string | null;
   publieLe: string | null;
@@ -94,6 +98,7 @@ export interface MatiereSnapshot {
   subjectId: string;
   subjectName: string;
   subjectCode: string;
+  teacherName?: string | null;
   coefficient: string | null;
   coefficientValide: boolean;
   comptabilisee: boolean;
@@ -106,6 +111,7 @@ export interface MatiereSnapshot {
   motifs: string[];
   groupes: GroupeSnapshot[];
   appreciation: string | null;
+  appreciationAuto?: boolean;
 }
 
 export interface SnapshotBulletin {
@@ -114,6 +120,7 @@ export interface SnapshotBulletin {
   dateCalcul: string;
   enTete: {
     nomEtablissement: string;
+    iefName?: string | null;
     ville: string | null;
     logoDataUrl?: string | null;
     intituleDocument: string;
@@ -123,6 +130,7 @@ export interface SnapshotBulletin {
   eleve: {
     enrollmentId: string;
     classroomId: string;
+    isRepeating?: boolean;
     matricule: string;
     nom: string;
     prenoms: string;
@@ -170,6 +178,9 @@ export interface SnapshotBulletin {
     retards: number;
     minutesRetard: number;
   };
+  mention?: string | null;
+  appreciation?: string | null;
+  decisionProposee?: string | null;
   motifs: string[];
 }
 
@@ -247,9 +258,13 @@ export interface BilanResume {
   motifs: string[];
   absences?: SnapshotBulletin['absences'] | null;
   mention: string | null;
+  mentionAuto: boolean;
   decisionConseil: string | null;
   decisionConseilValideeLe?: string | null;
+  decisionProposee?: string | null;
+  decisionAuto: boolean;
   appreciation: string | null;
+  appreciationAuto: boolean;
   genereLe: string | null;
   publieLe: string | null;
 }
@@ -288,6 +303,7 @@ export interface SnapshotBilanAnnuel {
   genereLe: string;
   enTete: {
     nomEtablissement: string;
+    iefName?: string | null;
     logoDataUrl?: string | null;
     intituleDocument: string;
     anneeScolaire: { id: string; nom: string; statut: string };
@@ -295,6 +311,7 @@ export interface SnapshotBilanAnnuel {
   eleve: {
     enrollmentId: string;
     classroomId: string;
+    isRepeating?: boolean;
     matricule: string;
     nom: string;
     prenoms: string;
@@ -325,6 +342,7 @@ export interface SnapshotBilanAnnuel {
   absences?: SnapshotBulletin['absences'];
   appreciation: string | null;
   mention: string | null;
+  decisionProposee?: string | null;
   decisionConseil: string | null;
   decisionConseilValideeLe?: string | null;
 }
@@ -399,6 +417,16 @@ export function modifierChampsLibres(id: string, champs: ChampsLibres) {
     method: 'PATCH',
     body: JSON.stringify(champs),
   });
+}
+
+export function modifierChampsBilanAnnuel(id: string, champs: ChampsLibres) {
+  return demander<{ bilan: BilanResume; snapshot: SnapshotBilanAnnuel }>(
+    `/api/annual-summaries/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(champs),
+    },
+  );
 }
 
 export function modifierAppreciation(options: {

@@ -7,6 +7,7 @@ type School = {
   id: string;
   name: string;
   officialName: string | null;
+  iefName: string;
   city: string | null;
   address: string | null;
   phone: string | null;
@@ -34,6 +35,25 @@ type Regles = {
   poidsSemestre1: string;
   poidsSemestre2: string;
   annuelSiSemestreManquant: 'NULL' | 'PARTIEL';
+};
+
+type AppreciationRule = {
+  id: string;
+  scope: 'MATIERE' | 'MENTION' | 'DECISION' | 'GENERALE';
+  code: string;
+  label: string;
+  minScore: string | null;
+  maxScore: string | null;
+  content: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+const LIBELLES_PORTEE: Record<AppreciationRule['scope'], string> = {
+  MATIERE: 'Appréciation par matière',
+  MENTION: 'Mention du bulletin',
+  DECISION: 'Proposition de décision',
+  GENERALE: 'Appréciation générale',
 };
 
 /** Valeurs par défaut du moteur de calcul (backend `services/calcul/index.ts`). */
@@ -109,12 +129,184 @@ function Section({ titre, children }: { titre: string; children: React.ReactNode
   );
 }
 
+function AppreciationRulesSection() {
+  const [rules, setRules] = useState<AppreciationRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void api.fetch('/api/schooling/appreciation-rules')
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof body.error === 'string' ? body.error : 'Impossible de charger les règles d’appréciation');
+        }
+        if (!Array.isArray(body.rules)) {
+          throw new Error('Réponse invalide lors du chargement des règles d’appréciation');
+        }
+        if (active) setRules(body.rules as AppreciationRule[]);
+      })
+      .catch((cause: unknown) => {
+        if (active) setError(cause instanceof Error ? cause.message : 'Impossible de charger les règles d’appréciation');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const modifierRule = (id: string, changes: Partial<AppreciationRule>) => {
+    setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...changes } : rule)));
+  };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await api.fetch('/api/schooling/appreciation-rules', {
+        method: 'PUT',
+        body: JSON.stringify({
+          rules: rules.map(({ scope, code, label, minScore, maxScore, content, sortOrder, isActive }) => ({
+            scope,
+            code,
+            label,
+            minScore,
+            maxScore,
+            content,
+            sortOrder,
+            isActive,
+          })),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Enregistrement des règles impossible');
+      }
+      if (!Array.isArray(body.rules)) {
+        throw new Error('Réponse invalide lors de l’enregistrement des règles');
+      }
+      setRules(body.rules as AppreciationRule[]);
+      setMessage('Règles d’appréciation enregistrées.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Enregistrement des règles impossible');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section titre="Appréciations automatiques — à valider par l’établissement">
+      <p className="text-xs text-muted-foreground">
+        Les textes générés restent modifiables avant publication. Une proposition de décision
+        n’est jamais une décision officielle du conseil de classe.
+      </p>
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {message ? <p role="status" className="text-sm text-emerald-700">{message}</p> : null}
+      {loading ? (
+        <p role="status" className="text-sm text-muted-foreground">Chargement des règles…</p>
+      ) : rules.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucune règle d’appréciation disponible.</p>
+      ) : (
+        <form onSubmit={(event) => void save(event)} className="space-y-5">
+          {(['MATIERE', 'MENTION', 'DECISION', 'GENERALE'] as const).map((scope) => {
+            const scopedRules = rules
+              .filter((rule) => rule.scope === scope)
+              .sort((a, b) => a.sortOrder - b.sortOrder);
+            if (scopedRules.length === 0) return null;
+            return (
+              <fieldset key={scope} className="space-y-3 rounded-md border border-border p-3">
+                <legend className="px-1 text-sm font-semibold">{LIBELLES_PORTEE[scope]}</legend>
+                {scopedRules.map((rule) => (
+                  <div key={rule.id} className="grid gap-3 border-b border-border/60 pb-3 last:border-0 md:grid-cols-[100px_1fr_1fr_1fr_2fr_auto]">
+                    <span className="self-center text-xs text-muted-foreground">
+                      {rule.minScore ?? '—'} à {rule.maxScore ?? '—'} / 20
+                    </span>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Libellé
+                      <input
+                        className={CLASSE_CHAMP}
+                        aria-label={`Libellé ${rule.code}`}
+                        value={rule.label}
+                        maxLength={120}
+                        onChange={(event) => modifierRule(rule.id, { label: event.target.value })}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Seuil min.
+                      <input
+                        className={CLASSE_CHAMP}
+                        aria-label={`Seuil minimum ${rule.code}`}
+                        type="number"
+                        min="0"
+                        max="20"
+                        step="0.01"
+                        required
+                        value={rule.minScore ?? ''}
+                        onChange={(event) => modifierRule(rule.id, { minScore: event.target.value || null })}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Seuil max.
+                      <input
+                        className={CLASSE_CHAMP}
+                        aria-label={`Seuil maximum ${rule.code}`}
+                        type="number"
+                        min="0"
+                        max="20"
+                        step="0.01"
+                        required
+                        value={rule.maxScore ?? ''}
+                        onChange={(event) => modifierRule(rule.id, { maxScore: event.target.value || null })}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs">
+                      Texte ou modèle
+                      <textarea
+                        className={CLASSE_CHAMP}
+                        aria-label={`Texte ${rule.code}`}
+                        rows={scope === 'GENERALE' ? 3 : 1}
+                        maxLength={500}
+                        value={rule.content}
+                        onChange={(event) => modifierRule(rule.id, { content: event.target.value })}
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 self-center text-xs">
+                      <input
+                        type="checkbox"
+                        aria-label={`Activer ${rule.code}`}
+                        checked={rule.isActive}
+                        onChange={(event) => modifierRule(rule.id, { isActive: event.target.checked })}
+                      />
+                      Active
+                    </label>
+                  </div>
+                ))}
+              </fieldset>
+            );
+          })}
+          <Button type="submit" disabled={saving}>
+            {saving ? 'Enregistrement…' : 'Enregistrer les règles d’appréciation'}
+          </Button>
+        </form>
+      )}
+    </Section>
+  );
+}
+
 export function SchoolSettingsPage() {
   const { school, refresh } = useAuth();
   const [form, setForm] = useState<School>({
     id: school?.id ?? '',
     name: school?.name ?? '',
     officialName: school?.officialName ?? '',
+    iefName: school?.iefName ?? 'IEF Thiès',
     city: school?.city ?? '',
     address: school?.address ?? '',
     phone: school?.phone ?? '',
@@ -133,6 +325,7 @@ export function SchoolSettingsPage() {
         id: school.id,
         name: school.name,
         officialName: school.officialName ?? '',
+        iefName: school.iefName ?? 'IEF Thiès',
         city: school.city ?? '',
         address: school.address ?? '',
         phone: school.phone ?? '',
@@ -250,6 +443,13 @@ export function SchoolSettingsPage() {
               placeholder="Nom officiel"
               value={form.officialName ?? ''}
               onChange={(e) => setForm({ ...form, officialName: e.target.value })}
+            />
+            <input
+              className={CLASSE_CHAMP}
+              placeholder="IEF de rattachement"
+              aria-label="IEF de rattachement"
+              value={form.iefName}
+              onChange={(e) => setForm({ ...form, iefName: e.target.value })}
             />
             <input
               className={CLASSE_CHAMP}
@@ -526,6 +726,7 @@ export function SchoolSettingsPage() {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
       </form>
+      <AppreciationRulesSection />
     </div>
   );
 }

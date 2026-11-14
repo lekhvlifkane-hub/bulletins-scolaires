@@ -42,6 +42,7 @@ export interface MatiereSnapshot {
   subjectId: string;
   subjectName: string;
   subjectCode: string;
+  teacherName?: string | null;
   coefficient: string | null;
   coefficientValide: boolean;
   comptabilisee: boolean;
@@ -53,8 +54,9 @@ export interface MatiereSnapshot {
   incomplet: boolean;
   motifs: string[];
   groupes: GroupeSnapshot[];
-  /** Appréciation du professeur : renseignée par l'établissement, jamais générée. */
+  /** Source du texte d'appréciation, pour distinguer une proposition du texte saisi. */
   appreciation: string | null;
+  appreciationAuto?: boolean;
 }
 
 export interface SyntheseSnapshot {
@@ -76,6 +78,7 @@ export interface EnTeteSnapshot {
   etablissementId: string;
   nomEtablissement: string;
   nomOfficiel: string | null;
+  iefName?: string | null;
   ville: string | null;
   adresse: string | null;
   telephone: string | null;
@@ -95,6 +98,7 @@ export interface EleveSnapshot {
   enrollmentId: string;
   studentId: string;
   classroomId: string;
+  isRepeating?: boolean;
   matricule: string;
   nom: string;
   prenoms: string;
@@ -158,6 +162,10 @@ export interface SnapshotBulletin {
   continuite: ContinuiteSnapshot;
   /** Le module absences arrive en phase 6 : rien n'est simulé en attendant. */
   absences?: SnapshotAbsences;
+  mention?: string | null;
+  appreciation?: string | null;
+  /** Proposition indicative : la décision officielle reste celle validée par le conseil. */
+  decisionProposee?: string | null;
   motifs: string[];
 }
 
@@ -203,6 +211,8 @@ export interface SnapshotBilanAnnuel {
   absences?: SnapshotAbsences;
   appreciation: string | null;
   mention: string | null;
+  /** Proposition indicative : ne remplace jamais une décision validée du conseil. */
+  decisionProposee?: string | null;
   decisionConseil: string | null;
   decisionConseilValideeLe?: string | null;
 }

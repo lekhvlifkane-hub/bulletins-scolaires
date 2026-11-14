@@ -320,6 +320,7 @@ function ecrire(plan: Plan, texte: string, options: OptionsTexte = {}): void {
     taille,
     options.couleur
   );
+
   plan.y += options.apres ?? 0;
 }
 
@@ -557,7 +558,9 @@ function lignesMatieres(s: SnapshotBulletin): Cellule[][] {
   return s.matieres.map((matiere, index) => [
     { texte: String(index + 1), aligne: 'centre' },
     {
-      texte: matiere.subjectName || matiere.subjectCode || 'Discipline',
+      texte:
+        (matiere.subjectName || matiere.subjectCode || 'Discipline') +
+        (matiere.teacherName ? `\nEnseignant : ${matiere.teacherName}` : ''),
       valeur: matiere.comptabilisee ? undefined : 'Non comptabilisée',
     },
     { texte: celluleGroupe(matiere, 'DEVOIR'), aligne: 'centre' },
@@ -594,6 +597,7 @@ export interface MetaBulletin {
 export interface TextesLibres {
   mention?: string | null;
   decisionConseil?: string | null;
+  decisionProposee?: string | null;
   appreciation?: string | null;
 }
 
@@ -689,6 +693,14 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
   const mention = mentionDe(meta, s.genereLe);
 
   dessinerLogo(plan, s.enTete.logoDataUrl);
+  if (s.enTete.iefName) {
+    ecrire(plan, s.enTete.iefName.toUpperCase(), {
+      aligne: 'centre',
+      style: 'gras',
+      taille: TAILLE.sousTitre,
+      apres: 2,
+    });
+  }
   ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
     aligne: 'centre',
     style: 'gras',
@@ -752,6 +764,14 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
       ],
     ]
   );
+  if (s.eleve.isRepeating) {
+    ecrire(plan, 'Redoublant', {
+      taille: TAILLE.petit,
+      style: 'gras',
+      couleur: COULEUR.doux,
+      apres: 2,
+    });
+  }
 
   ecrire(plan, 'Notes et moyennes par discipline', {
     style: 'gras',
@@ -869,6 +889,9 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
   cadre(plan, 'Décisions', [
     { libelle: 'Mention', valeur: textes.mention ?? 'Non renseigné' },
     { libelle: 'Décision du conseil de classe', valeur: textes.decisionConseil ?? 'Non renseigné' },
+    ...(textes.decisionProposee
+      ? [{ libelle: 'Proposition automatique (à valider)', valeur: textes.decisionProposee }]
+      : []),
     { libelle: 'Appréciation générale', valeur: textes.appreciation ?? 'Non renseigné' },
   ]);
 
@@ -932,6 +955,14 @@ function ecart(de: string | null, s: SnapshotBulletin): string {
 function dessinerBilan(plan: Plan, s: SnapshotBilanAnnuel, meta: MetaBulletin): void {
   const debut = plan.page;
   dessinerLogo(plan, s.enTete.logoDataUrl);
+  if (s.enTete.iefName) {
+    ecrire(plan, s.enTete.iefName.toUpperCase(), {
+      aligne: 'centre',
+      style: 'gras',
+      taille: TAILLE.sousTitre,
+      apres: 2,
+    });
+  }
   ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
     aligne: 'centre',
     style: 'gras',
@@ -947,6 +978,15 @@ function dessinerBilan(plan: Plan, s: SnapshotBilanAnnuel, meta: MetaBulletin): 
     taille: TAILLE.corps,
     apres: 6,
   });
+  if (s.eleve.isRepeating) {
+    ecrire(plan, 'Redoublant', {
+      aligne: 'centre',
+      taille: TAILLE.petit,
+      style: 'gras',
+      couleur: COULEUR.doux,
+      apres: 2,
+    });
+  }
 
   tableau(
     plan,
@@ -1060,6 +1100,9 @@ function dessinerBilan(plan: Plan, s: SnapshotBilanAnnuel, meta: MetaBulletin): 
         : 'Décision du conseil de classe',
       valeur: s.decisionConseil ?? 'Non renseigné',
     },
+    ...(s.decisionProposee
+      ? [{ libelle: 'Proposition automatique (à valider)', valeur: s.decisionProposee }]
+      : []),
     { libelle: 'Appréciation générale', valeur: s.appreciation ?? 'Non renseigné' },
   ]);
 

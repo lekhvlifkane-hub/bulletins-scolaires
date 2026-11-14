@@ -18,6 +18,7 @@ export function publicSchool(school: School) {
     id: school.id,
     name: school.name,
     officialName: school.officialName,
+    iefName: school.iefName,
     city: school.city,
     address: school.address,
     phone: school.phone,

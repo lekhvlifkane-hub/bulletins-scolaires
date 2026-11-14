@@ -49,6 +49,7 @@ describe('DisciplinesPage', () => {
           classroomId: 'class-1',
           subjectId: 'subject-1',
           coefficient: '3',
+          teacherName: null,
         });
         assignments.push({
           id: 'assignment-1',
@@ -93,6 +94,7 @@ describe('DisciplinesPage', () => {
         classroomId: 'class-1',
         subjectId: 'subject-1',
         coefficient: '3',
+        teacherName: null,
       }),
     });
   });
@@ -102,6 +104,7 @@ describe('DisciplinesPage', () => {
     const previous = {
       id: 'assignment-1',
       coefficient: '2',
+      teacherName: null,
       effectiveFrom: '2026-09-01T00:00:00.000Z',
       effectiveTo: null as string | null,
       subject: subjects[0],
@@ -133,9 +136,11 @@ describe('DisciplinesPage', () => {
 
     render(<DisciplinesPage />);
     await screen.findByText('2');
-    fireEvent.click(screen.getByRole('button', { name: 'Modifier' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Modifier le coefficient de Mathématiques 6e A' }),
+    );
     fireEvent.change(
-      screen.getByLabelText('Nouveau coefficient Mathématiques 6e A'),
+      await screen.findByLabelText('Nouveau coefficient Mathématiques 6e A'),
       { target: { value: '3.5' } },
     );
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));

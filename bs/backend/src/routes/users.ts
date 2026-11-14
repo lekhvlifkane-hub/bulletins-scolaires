@@ -11,6 +11,7 @@ import { writeAuditLog } from '../services/audit';
 import { requireCsrf } from '../lib/csrf';
 
 const router = Router();
+const MAX_USERS_PER_SCHOOL = 3;
 
 const createUserSchema = z.object({
   name: z.string().trim().min(2),
@@ -82,15 +83,30 @@ router.post(
     }
 
     const finalPassword = password ?? generateTemporaryPassword();
-    const user = await prisma.user.create({
-      data: {
-        schoolId,
-        name,
-        email,
-        role,
-        passwordHash: await hashPassword(finalPassword),
-        isActive: true,
-      },
+    const passwordHash = await hashPassword(finalPassword);
+    const user = await prisma.$transaction(async (transaction) => {
+      const school = await transaction.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "School" WHERE "id" = ${schoolId} FOR UPDATE
+      `;
+      if (school.length === 0) throw new HttpError(404, "Établissement introuvable");
+
+      const accountCount = await transaction.user.count({
+        where: { schoolId, deletedAt: null },
+      });
+      if (accountCount >= MAX_USERS_PER_SCHOOL) {
+        throw new HttpError(409, `La limite de ${MAX_USERS_PER_SCHOOL} comptes par établissement est atteinte`);
+      }
+
+      return transaction.user.create({
+        data: {
+          schoolId,
+          name,
+          email,
+          role,
+          passwordHash,
+          isActive: true,
+        },
+      });
     });
 
     await writeAuditLog({

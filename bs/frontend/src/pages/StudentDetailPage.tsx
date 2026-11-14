@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 type Enrollment = {
   id: string;
   status: string;
+  isRepeating: boolean;
+  entryType: 'NEW' | 'TRANSFERRED' | null;
   enrolledAt: string;
   endedAt: string | null;
   classroom: {
@@ -14,6 +16,8 @@ type Enrollment = {
     name: string;
     academicYear: { name: string };
   };
+  reportCards: { id: string; version: number; statut: string; semester: { name: string } }[];
+  annualSummaries: { id: string; version: number; statut: string; academicYear: { name: string } }[];
 };
 
 type Student = {
@@ -94,6 +98,7 @@ export function StudentDetailPage() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [form, setForm] = useState<StudentForm>(emptyForm);
   const [classroomId, setClassroomId] = useState('');
+  const [isRepeating, setIsRepeating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +123,7 @@ export function StudentDetailPage() {
         (enrollment) => enrollment.status === 'ACTIVE',
       );
       setStudent(studentData.student);
+      setIsRepeating(false);
       setForm(formDepuisStudent(studentData.student));
       setClassrooms(targetClasses);
       setClassroomId((current) =>
@@ -167,7 +173,7 @@ export function StudentDetailPage() {
     try {
       const response = await api.fetch(`/api/students/${id}/enrollments`, {
         method: 'POST',
-        body: JSON.stringify({ classroomId }),
+        body: JSON.stringify({ classroomId, isRepeating }),
       });
       const body = await lireReponse<{ message: string }>(response, 'Impossible de transférer l’élève');
       setMessage(body.message);
@@ -238,7 +244,7 @@ export function StudentDetailPage() {
               </label>
               <label className="space-y-1.5 text-xs font-semibold text-slate-600">
                 Date de naissance
-                <input className={inputClass} type="date" value={form.birthDate}
+                <input className={inputClass} type="date" required value={form.birthDate}
                   onChange={(event) => setForm({ ...form, birthDate: event.target.value })} />
               </label>
               <label className="space-y-1.5 text-xs font-semibold text-slate-600">
@@ -298,6 +304,14 @@ export function StudentDetailPage() {
                     ))}
                   </select>
                 </label>
+                <label className="flex items-center gap-2 self-end pb-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={isRepeating}
+                    onChange={(event) => setIsRepeating(event.target.checked)}
+                  />
+                  Inscription redoublante
+                </label>
                 <div className="self-end">
                   <Button type="submit" disabled={saving || !classroomId}>
                     <ArrowLeftRight aria-hidden="true" className="h-4 w-4" />
@@ -321,10 +335,40 @@ export function StudentDetailPage() {
                     </span>
                     <span className="text-slate-500">
                       {enrollment.status} · {new Date(enrollment.enrolledAt).toLocaleDateString('fr-FR')}
+                      {enrollment.isRepeating ? ' · Redoublant' : ''}
+                      {enrollment.entryType === 'TRANSFERRED'
+                        ? ' · Transféré'
+                        : enrollment.entryType === 'NEW' && !enrollment.isRepeating
+                          ? ' · Nouveau'
+                          : !enrollment.entryType
+                            ? ' · Statut non renseigné'
+                            : ''}
                       {enrollment.endedAt
                         ? ` — ${new Date(enrollment.endedAt).toLocaleDateString('fr-FR')}`
                         : ''}
                     </span>
+                    {enrollment.reportCards.length || enrollment.annualSummaries.length ? (
+                      <div className="w-full pl-1 text-xs text-emerald-800">
+                        {enrollment.reportCards.map((bulletin) => (
+                          <Link
+                            key={bulletin.id}
+                            className="mr-3 inline-block underline"
+                            to={`/bulletins/${bulletin.id}`}
+                          >
+                            {bulletin.semester.name} · bulletin v{bulletin.version} ({bulletin.statut})
+                          </Link>
+                        ))}
+                        {enrollment.annualSummaries.map((bilan) => (
+                          <Link
+                            key={bilan.id}
+                            className="mr-3 inline-block underline"
+                            to={`/bilan-annuel/${bilan.id}`}
+                          >
+                            {bilan.academicYear.name} · bilan v{bilan.version} ({bilan.statut})
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

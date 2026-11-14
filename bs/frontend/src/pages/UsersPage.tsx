@@ -26,6 +26,7 @@ export function UsersPage() {
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', email: '', role: 'ASSISTANT' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const maximumAccounts = 3;
 
   const load = useCallback(async () => {
     try {
@@ -169,7 +170,11 @@ export function UsersPage() {
       )}
 
       {(!isPlatformAdmin || selectedSchoolId) && (
-        <form onSubmit={create} className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-4">
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {users.length}/{maximumAccounts} comptes utilisés pour cet établissement.
+          </p>
+          <form onSubmit={create} className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-4">
           <input
             className="rounded-md border border-input px-3 py-2 text-sm"
             placeholder="Nom complet"
@@ -194,8 +199,17 @@ export function UsersPage() {
             <option value="SURVEILLANT_GENERAL">Surveillant général</option>
             {isPlatformAdmin && <option value="SCHOOL_ADMIN">Administrateur</option>}
           </select>
-          <Button type="submit" disabled={actionLoading !== null}>Ajouter</Button>
-        </form>
+            <Button
+              type="submit"
+              disabled={actionLoading !== null || loading || users.length >= maximumAccounts}
+            >
+              Ajouter
+            </Button>
+          </form>
+          {users.length >= maximumAccounts ? (
+            <p className="text-sm text-amber-700">La limite de trois comptes est atteinte.</p>
+          ) : null}
+        </div>
       )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}

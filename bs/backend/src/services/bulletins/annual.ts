@@ -9,6 +9,7 @@ import { parametresEtablissement } from '../calcul/etablissement';
 import { calculerResultatsClasse } from '../calcul/resultats';
 import { writeAuditLog } from '../audit';
 import { resumeAbsences } from '../attendance';
+import { chargerReglesAppreciation, genererAppreciationGenerale } from '../appreciations';
 import { chargerEtablissement, chargerInscription, gardeSansFlottant } from './construction';
 import { VERSION_SNAPSHOT, type SnapshotBilanAnnuel } from './types';
 
@@ -111,7 +112,7 @@ export async function construireSnapshotAnnuel(options: {
   const school = await chargerEtablissement(options.schoolId);
   const enrollment = await chargerInscription(options.schoolId, options.enrollmentId);
   const semestres = await chargerSemestres(options.schoolId, options.academicYearId);
-  const [absences, decisionValidee] = await Promise.all([
+  const [absences, decisionValidee, appreciationRules] = await Promise.all([
     resumeAbsences(options.schoolId, options.enrollmentId, semestres.map((s) => s.id)),
     prisma.councilDecision.findFirst({
       where: {
@@ -123,6 +124,7 @@ export async function construireSnapshotAnnuel(options: {
       },
       orderBy: { version: 'desc' },
     }),
+    chargerReglesAppreciation(options.schoolId),
   ]);
   const params = parametresEtablissement(school, {
     ...(options.dateCalcul ? { dateCalcul: options.dateCalcul } : {}),
@@ -224,6 +226,25 @@ export async function construireSnapshotAnnuel(options: {
       motifs: resultat.motifs,
     };
   });
+  const textesGeneres = genererAppreciationGenerale({
+    studentId: enrollment.studentId,
+    prenom: enrollment.student.firstNames,
+    moyenne: annuelle.moyenne?.toString() ?? null,
+    rang: monClassement?.rang ?? null,
+    effectif: resultatsS1.eleves.length,
+    matieres: matieres.map((matiere) => ({
+      subjectName: matiere.subjectName,
+      moyenne: matiere.annuelle,
+    })),
+    absences: absences.disponible
+      ? {
+          total: absences.absencesTotal,
+          nonJustifiees: absences.absencesNonJustifiees,
+        }
+      : null,
+    rules: appreciationRules,
+    seed: `${enrollment.studentId}:${options.academicYearId}:ANNUEL`,
+  });
 
   const snapshot: SnapshotBilanAnnuel = {
     versionSchema: VERSION_SNAPSHOT,
@@ -232,6 +253,7 @@ export async function construireSnapshotAnnuel(options: {
       etablissementId: school.id,
       nomEtablissement: school.name,
       nomOfficiel: school.officialName,
+      iefName: school.iefName,
       ville: school.city,
       adresse: school.address,
       telephone: school.phone,
@@ -251,6 +273,7 @@ export async function construireSnapshotAnnuel(options: {
       enrollmentId: enrollment.id,
       studentId: enrollment.studentId,
       classroomId: enrollment.classroomId,
+      isRepeating: enrollment.isRepeating,
       matricule: enrollment.student.matricule,
       nom: enrollment.student.lastName,
       prenoms: enrollment.student.firstNames,
@@ -278,8 +301,9 @@ export async function construireSnapshotAnnuel(options: {
     },
     absences,
     // Textes libres : ils vivent en colonnes de l'AnnualSummary, jamais dans le calcul.
-    appreciation: null,
-    mention: null,
+    appreciation: textesGeneres.appreciation,
+    mention: textesGeneres.mention,
+    decisionProposee: textesGeneres.decision,
     decisionConseil: decisionValidee?.content ?? null,
     decisionConseilValideeLe: decisionValidee?.validatedAt?.toISOString() ?? null,
   };
@@ -333,10 +357,11 @@ export async function genererBilanAnnuel(options: {
     throw new HttpError(409, 'Bilan annuel publié et figé : régénération impossible');
   }
 
-  if (existant) {
-    snapshot.mention = existant.mention;
-    snapshot.appreciation = existant.appreciation;
-  }
+  const mentionAuto = existant?.mentionAuto ?? true;
+  const appreciationAuto = existant?.appreciationAuto ?? true;
+  const decisionAuto = snapshot.decisionConseil === null;
+  if (existant && !mentionAuto) snapshot.mention = existant.mention;
+  if (existant && !appreciationAuto) snapshot.appreciation = existant.appreciation;
 
   const donnees = {
     snapshot: snapshot as unknown as Prisma.InputJsonValue,
@@ -349,9 +374,14 @@ export async function genererBilanAnnuel(options: {
     rangAnnuel: snapshot.annuelle.rangAnnuel,
     effectif: snapshot.annuelle.effectif,
     motifs: snapshot.annuelle.motifs,
+    mention: snapshot.mention,
+    appreciation: snapshot.appreciation,
+    decisionConseil: snapshot.decisionConseil,
+    mentionAuto,
+    appreciationAuto,
+    decisionAuto,
     s1ReportCardId: snapshot.semestres[0]?.reportCardId ?? null,
     s2ReportCardId: snapshot.semestres[1]?.reportCardId ?? null,
-    decisionConseil: snapshot.decisionConseil,
     genereLe: new Date(),
   };
 

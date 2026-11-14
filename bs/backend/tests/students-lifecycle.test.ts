@@ -60,7 +60,7 @@ describe('Transfert et archivage des élèves', () => {
     const response = await agent
       .post(`/api/students/${student.id}/enrollments`)
       .set('x-csrf-token', csrf)
-      .send({ classroomId: secondClass.id });
+      .send({ classroomId: secondClass.id, isRepeating: true });
 
     expect(response.status, JSON.stringify(response.body)).toBe(201);
     const enrollments = await prisma.enrollment.findMany({
@@ -73,6 +73,7 @@ describe('Transfert et archivage des élèves', () => {
     expect(enrollments[0].endedAt).toBeInstanceOf(Date);
     expect(enrollments[1].classroomId).toBe(secondClass.id);
     expect(enrollments[1].status).toBe('ACTIVE');
+    expect(enrollments[1].isRepeating).toBe(true);
 
     const duplicate = await agent
       .post(`/api/students/${student.id}/enrollments`)
@@ -80,6 +81,37 @@ describe('Transfert et archivage des élèves', () => {
       .send({ classroomId: secondClass.id });
     expect(duplicate.status).toBe(409);
     expect(await prisma.enrollment.count({ where: { studentId: student.id } })).toBe(2);
+  });
+
+  it('assigns unique sequential matricules when omitted', async () => {
+    const { school, agent, csrf } = await setup();
+    const first = await agent
+      .post('/api/students')
+      .set('x-csrf-token', csrf)
+      .send({ lastName: 'Diop', firstNames: 'Moussa', birthDate: '2011-05-04' });
+    const second = await agent
+      .post('/api/students')
+      .set('x-csrf-token', csrf)
+      .send({ lastName: 'Ba', firstNames: 'Fatou', birthDate: '2012-01-19' });
+
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(second.status, JSON.stringify(second.body)).toBe(201);
+    expect(first.body.student.matricule).toBe('ELI001');
+    expect(second.body.student.matricule).toBe('ELI002');
+    expect(await prisma.student.count({
+      where: { schoolId: school.id, matricule: { startsWith: 'ELI' } },
+    })).toBe(2);
+  });
+
+  it('requires a birth date when creating a student', async () => {
+    const { school, agent, csrf } = await setup();
+    const response = await agent
+      .post('/api/students')
+      .set('x-csrf-token', csrf)
+      .send({ lastName: 'Ndiaye', firstNames: 'Aminata' });
+
+    expect(response.status).toBe(400);
+    expect(await prisma.student.count({ where: { schoolId: school.id } })).toBe(1);
   });
 
   it('archives the student and closes the active enrollment without deleting its history', async () => {

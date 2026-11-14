@@ -37,9 +37,13 @@ const student = {
   enrollments: [{
     id: 'enrollment-1',
     status: 'ACTIVE',
+    isRepeating: false,
+    entryType: 'NEW',
     enrolledAt: '2025-09-01T00:00:00.000Z',
     endedAt: null,
     classroom: { id: 'class-1', name: '6e A', academicYear: { name: '2025-2026' } },
+    reportCards: [],
+    annualSummaries: [],
   }],
 };
 type StudentFixture = Omit<typeof student, 'enrollments'> & {
@@ -73,7 +77,7 @@ describe('StudentDetailPage', () => {
         return reponse({ student: updatedStudent });
       }
       if (path === '/api/students/student-1/enrollments') {
-        expect(JSON.parse(String(init?.body))).toEqual({ classroomId: 'class-2' });
+        expect(JSON.parse(String(init?.body))).toEqual({ classroomId: 'class-2', isRepeating: true });
         updatedStudent = {
           ...updatedStudent,
           enrollments: [
@@ -86,6 +90,8 @@ describe('StudentDetailPage', () => {
               ...student.enrollments[0],
               id: 'enrollment-2',
               status: 'ACTIVE',
+              isRepeating: true,
+              entryType: 'NEW',
               classroom: { id: 'class-2', name: '5e A', academicYear: { name: '2026-2027' } },
             },
           ],
@@ -113,9 +119,11 @@ describe('StudentDetailPage', () => {
       }));
     });
 
+    fireEvent.click(screen.getByLabelText('Inscription redoublante'));
     fireEvent.click(screen.getByRole('button', { name: 'Transférer l’élève' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Inscription créée');
     expect(await screen.findByText('5e A · 2026-2027')).toBeInTheDocument();
+    expect(await screen.findByText(/Redoublant/)).toBeInTheDocument();
     expect(await screen.findByText(/6e A · 2025-2026/)).toBeInTheDocument();
   });
 

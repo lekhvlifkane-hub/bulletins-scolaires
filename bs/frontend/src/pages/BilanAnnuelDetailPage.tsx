@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   LIBELLES_STATUT_BULLETIN,
   chargerBilanAnnuel,
+  modifierChampsBilanAnnuel,
+  ROLES_EDITION_BULLETIN,
   telechargerPdf,
   type BilanResume,
   type SnapshotBilanAnnuel,
@@ -22,11 +26,15 @@ function dateCourte(valeur: string | null): string {
 
 export function BilanAnnuelDetailPage() {
   const { id = '' } = useParams();
+  const { user } = useAuth();
   const [donnees, setDonnees] = useState<SnapshotBilanAnnuel | null>(null);
   const [resume, setResume] = useState<BilanResume | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [champs, setChamps] = useState({ mention: '', appreciation: '' });
+  const [champsModifies, setChampsModifies] = useState({ mention: false, appreciation: false });
+  const [enCours, setEnCours] = useState(false);
 
   const charger = useCallback(async () => {
     setChargement(true);
@@ -34,6 +42,11 @@ export function BilanAnnuelDetailPage() {
       const detail = await chargerBilanAnnuel(id);
       setDonnees(detail.snapshot);
       setResume(detail.bilan);
+      setChamps({
+        mention: detail.bilan.mention ?? '',
+        appreciation: detail.bilan.appreciation ?? '',
+      });
+      setChampsModifies({ mention: false, appreciation: false });
       setErreur(null);
     } catch (e) {
       setDonnees(null);
@@ -56,6 +69,36 @@ export function BilanAnnuelDetailPage() {
       setErreur((e as Error).message);
     }
   };
+
+  const enregistrerChamps = async () => {
+    if (!champsModifies.mention && !champsModifies.appreciation) return;
+    setEnCours(true);
+    setErreur(null);
+    setMessage(null);
+    try {
+      const { bilan, snapshot } = await modifierChampsBilanAnnuel(id, {
+        ...(champsModifies.mention ? { mention: champs.mention.trim() || null } : {}),
+        ...(champsModifies.appreciation
+          ? { appreciation: champs.appreciation.trim() || null }
+          : {}),
+      });
+      setResume(bilan);
+      setDonnees(snapshot);
+      setChampsModifies({ mention: false, appreciation: false });
+      setMessage('Champs libres du bilan enregistrés.');
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const modifiable = Boolean(
+    resume &&
+    resume.statut !== 'PUBLIE' &&
+    user &&
+    ROLES_EDITION_BULLETIN.includes(user.role),
+  );
 
   if (chargement) return <p className="text-sm text-muted-foreground">Chargement du bilan…</p>;
 
@@ -87,8 +130,10 @@ export function BilanAnnuelDetailPage() {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground">
+            {donnees.enTete.iefName ? `${donnees.enTete.iefName} · ` : ''}
             {donnees.enTete.nomEtablissement} · {donnees.eleve.classe} ·{' '}
             {donnees.enTete.anneeScolaire.nom} · matricule {donnees.eleve.matricule}
+            {donnees.eleve.isRepeating ? ' · Redoublant' : ''}
           </p>
           <p className="mt-1 text-sm">
             <span className="rounded-md border border-border px-2 py-0.5 text-xs">
@@ -215,8 +260,30 @@ export function BilanAnnuelDetailPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-border p-4 text-sm">
-          <p className="text-xs text-muted-foreground">Mention</p>
-          <p>{donnees.mention ?? 'Non renseigné'}</p>
+          {modifiable ? (
+            <label className="block">
+              <span className="text-xs text-muted-foreground">
+                Mention{resume.mentionAuto ? ' · générée automatiquement' : ' · modifiée'}
+              </span>
+              <Input
+                className="mt-1"
+                value={champs.mention}
+                maxLength={120}
+                onChange={(event) => {
+                  setChamps((current) => ({ ...current, mention: event.target.value }));
+                  setChampsModifies((current) => ({ ...current, mention: true }));
+                }}
+              />
+            </label>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">Mention</p>
+              <p>{donnees.mention ?? 'Non renseigné'}</p>
+              {resume.mentionAuto ? (
+                <p className="mt-1 text-xs text-muted-foreground">Générée automatiquement</p>
+              ) : null}
+            </>
+          )}
         </div>
         <div className="rounded-lg border border-border p-4 text-sm">
           <p className="text-xs text-muted-foreground">
@@ -227,12 +294,49 @@ export function BilanAnnuelDetailPage() {
                 : 'Décision du conseil'}
           </p>
           <p>{donnees.decisionConseil ?? 'Non renseigné'}</p>
+          {donnees.decisionProposee ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Proposition automatique à valider : {donnees.decisionProposee}
+            </p>
+          ) : null}
         </div>
         <div className="rounded-lg border border-border p-4 text-sm">
-          <p className="text-xs text-muted-foreground">Appréciation</p>
-          <p>{donnees.appreciation ?? 'Non renseigné'}</p>
+          {modifiable ? (
+            <label className="block">
+              <span className="text-xs text-muted-foreground">
+                Appréciation{resume.appreciationAuto ? ' · générée automatiquement' : ' · modifiée'}
+              </span>
+              <textarea
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                rows={4}
+                maxLength={500}
+                value={champs.appreciation}
+                onChange={(event) => {
+                  setChamps((current) => ({ ...current, appreciation: event.target.value }));
+                  setChampsModifies((current) => ({ ...current, appreciation: true }));
+                }}
+              />
+            </label>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">Appréciation</p>
+              <p>{donnees.appreciation ?? 'Non renseigné'}</p>
+              {resume.appreciationAuto ? (
+                <p className="mt-1 text-xs text-muted-foreground">Générée automatiquement</p>
+              ) : null}
+            </>
+          )}
         </div>
       </div>
+      {modifiable ? (
+        <Button
+          size="sm"
+          onClick={() => void enregistrerChamps()}
+          disabled={enCours || (!champsModifies.mention && !champsModifies.appreciation)}
+        >
+          {enCours ? 'Enregistrement…' : 'Enregistrer les champs libres'}
+        </Button>
+      ) : null}
     </div>
   );
 }
