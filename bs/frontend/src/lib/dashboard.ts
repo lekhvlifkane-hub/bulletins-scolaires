@@ -9,6 +9,7 @@ export interface DashboardSchool {
     enrollments: number;
     classrooms: number;
     subjects: number;
+    evaluationTypes: number;
     assessments: number;
     bulletins: number;
     publishedBulletins: number;

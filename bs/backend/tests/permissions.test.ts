@@ -71,6 +71,9 @@ describe('Permissions et isolation', () => {
     expect(response.body.scope).toBe('school');
     expect(response.body.schoolName).toBe(schoolA.name);
     expect(response.body.indicators.students).toBe(1);
+    // Sert à la liste de contrôle « Premiers pas » : les types d'évaluation
+    // créés par une autre école ne doivent jamais fuiter ici.
+    expect(response.body.indicators.evaluationTypes).toBe(0);
   });
 
   it('réserve les indicateurs de plateforme à un compte authentifié', async () => {

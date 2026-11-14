@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { PremiersPas } from '@/components/PremiersPas';
 import { chargerDashboard, type DashboardPlatform, type DashboardSchool } from '@/lib/dashboard';
 
 const DashboardCharts = lazy(() => import('@/components/DashboardCharts'));
@@ -151,6 +152,19 @@ export function DashboardPage() {
           <span>{erreur}</span>
           <Button variant="outline" size="sm" onClick={() => void charger()}>Réessayer</Button>
         </div>
+      )}
+
+      {donnees?.scope === 'school' && user?.role === 'SCHOOL_ADMIN' && (
+        // Liste de contrôle visible tant que l'installation de début d'année
+        // est incomplète ; une fois les 4 étapes faites, elle disparaît.
+        (!donnees.academicYear || donnees.indicators.classrooms === 0 || donnees.indicators.subjects === 0 || donnees.indicators.evaluationTypes === 0) && (
+          <PremiersPas
+            anneeActive={donnees.academicYear != null}
+            classes={donnees.indicators.classrooms}
+            matieres={donnees.indicators.subjects}
+            typesEvaluation={donnees.indicators.evaluationTypes}
+          />
+        )
       )}
 
       {chargement && !donnees ? (

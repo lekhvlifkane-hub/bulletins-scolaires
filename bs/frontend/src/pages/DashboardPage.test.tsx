@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from './DashboardPage';
@@ -24,6 +24,7 @@ const dashboard: DashboardSchool = {
     enrollments: 35,
     classrooms: 4,
     subjects: 9,
+    evaluationTypes: 3,
     assessments: 12,
     bulletins: 30,
     publishedBulletins: 18,
@@ -32,6 +33,24 @@ const dashboard: DashboardSchool = {
     { id: 's1', name: 'Semestre 1', numero: 1, bulletins: 20, bulletinsPublies: 12, absences: 3, retards: 2 },
     { id: 's2', name: 'Semestre 2', numero: 2, bulletins: 10, bulletinsPublies: 6, absences: 1, retards: 0 },
   ],
+};
+
+// Établissement à l'installation : une étape au moins est incomplète.
+const dashboardVierge: DashboardSchool = {
+  ...dashboard,
+  academicYear: null,
+  indicators: {
+    ...dashboard.indicators,
+    students: 0,
+    enrollments: 0,
+    classrooms: 0,
+    subjects: 0,
+    evaluationTypes: 0,
+    assessments: 0,
+    bulletins: 0,
+    publishedBulletins: 0,
+  },
+  semesters: [],
 };
 
 function rendre() {
@@ -60,5 +79,27 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Service indisponible');
     screen.getByRole('button', { name: 'Réessayer' }).click();
     expect(await screen.findByText('Évaluations')).toBeInTheDocument();
+  });
+
+  it('propose la liste de contrôle Premiers pas quand l’installation est incomplète', async () => {
+    chargerDashboard.mockResolvedValue(dashboardVierge);
+    rendre();
+
+    const section = await screen.findByRole('region', { name: 'Premiers pas' });
+    expect(section).toBeInTheDocument();
+    expect(within(section).getAllByRole('link').map((lien) => lien.textContent)).toEqual([
+      expect.stringContaining('Créer l’année scolaire'),
+      expect.stringContaining('Créer les classes'),
+      expect.stringContaining('Ajouter les matières'),
+      expect.stringContaining('Définir devoirs et compositions'),
+    ]);
+  });
+
+  it('masque la liste de contrôle quand les 4 étapes sont terminées', async () => {
+    chargerDashboard.mockResolvedValue(dashboard);
+    rendre();
+
+    expect(await screen.findByText('Bulletins générés')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Premiers pas' })).not.toBeInTheDocument();
   });
 });

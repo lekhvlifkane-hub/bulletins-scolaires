@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { CalendarDays, GraduationCap, Layers3, Plus, School, Users } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CalendarDays, GraduationCap, Layers3, Plus, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type AcademicYear = {
   id: string;
@@ -99,6 +101,14 @@ export function ClassesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Onglet actif : l'installation de l'année, puis les classes ; les niveaux
+  // et séries (usage rare) restent dans leur onglet. Un lien profond
+  // (« /classes?onglet=classes » depuis les Premiers pas) choisit le départ.
+  const [searchParams] = useSearchParams();
+  const ongletDemande = searchParams.get('onglet');
+  const [onglet, setOnglet] = useState(
+    ongletDemande === 'classes' || ongletDemande === 'structure' ? ongletDemande : 'annees',
+  );
 
   const loadClasses = useCallback(async () => {
     const response = await api.fetch('/api/schooling/classes');
@@ -453,22 +463,14 @@ export function ClassesPage() {
   const canCreate = hasOpenYear && options.levels.length > 0;
 
   return (
-    <div className="space-y-8">
-      <section className="relative isolate overflow-hidden rounded-[1.65rem] bg-[#123653] px-6 py-7 text-white shadow-[0_14px_38px_rgba(16,46,74,0.12)] sm:px-8 sm:py-8 lg:px-10">
-        <div aria-hidden="true" className="absolute -right-10 -top-32 -z-10 h-80 w-80 rounded-full border-[44px] border-white/[0.045]" />
-        <div className="relative flex items-center gap-4">
-          <span className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 sm:flex">
-            <School aria-hidden="true" className="h-7 w-7 text-emerald-200" />
-          </span>
-          <div>
-            <p className="text-sm font-medium text-emerald-200">Organisation pédagogique</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">Classes et années</h1>
-            <p className="mt-2 text-sm text-blue-100/75">
-              Gérez les années scolaires, semestres, niveaux, séries et classes de votre établissement.
-            </p>
-          </div>
-        </div>
-      </section>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Classes et années</h1>
+        <p className="text-sm text-muted-foreground">
+          L’année scolaire et ses deux semestres, puis vos classes. Les niveaux et les séries,
+          plus rarement utilisés, ont leur onglet dédié.
+        </p>
+      </div>
 
       {error && (
         <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800">
@@ -481,6 +483,14 @@ export function ClassesPage() {
         </div>
       )}
 
+      <Tabs value={onglet} onValueChange={setOnglet}>
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="annees">Année et semestres</TabsTrigger>
+          <TabsTrigger value="classes">Classes</TabsTrigger>
+          <TabsTrigger value="structure">Niveaux et séries</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="annees" className="mt-5">
       <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7">
         <div className="mb-6">
           <div className="flex items-center gap-2">
@@ -651,7 +661,9 @@ export function ClassesPage() {
           </div>
         )}
       </section>
+        </TabsContent>
 
+        <TabsContent value="structure" className="mt-5">
       <section className="grid gap-5 xl:grid-cols-2">
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -751,7 +763,9 @@ export function ClassesPage() {
           </div>
         </article>
       </section>
+        </TabsContent>
 
+        <TabsContent value="classes" className="mt-5 space-y-8">
       <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7">
         <div className="mb-6">
           <div className="flex items-center gap-2">
@@ -773,7 +787,7 @@ export function ClassesPage() {
           </p>
         ) : options.levels.length === 0 ? (
           <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Aucun niveau n’est configuré. Ajoutez d’abord les niveaux dans la gestion de l’établissement.
+            Aucun niveau n’est configuré. Ajoutez d’abord les niveaux dans l’onglet « Niveaux et séries ».
           </p>
         ) : (
           <form onSubmit={createClass} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -911,6 +925,8 @@ export function ClassesPage() {
           </div>
         )}
       </section>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

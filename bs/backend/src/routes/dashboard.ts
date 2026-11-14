@@ -34,12 +34,15 @@ router.get('/', asyncHandler(async (req, res) => {
     include: { semesters: { orderBy: { number: 'asc' } } },
     orderBy: { startsAt: 'desc' },
   });
-  const [students, classrooms, subjects, assessments, reportCards, attendance, enrollments, school] = await Promise.all([
+  const [students, classrooms, subjects, evaluationTypes, assessments, reportCards, attendance, enrollments, school] = await Promise.all([
     prisma.student.count({ where: { schoolId, deletedAt: null } }),
     prisma.classroom.count({
       where: { schoolId, deletedAt: null, ...(year ? { academicYearId: year.id } : {}) },
     }),
     prisma.subject.count({ where: { schoolId, deletedAt: null } }),
+    // Sert à la liste de contrôle « Premiers pas » du tableau de bord : une
+    // évaluation ne peut être créée sans type (devoir, composition…).
+    prisma.assessmentType.count({ where: { schoolId, deletedAt: null } }),
     prisma.assessment.groupBy({
       by: ['status'],
       where: { schoolId, deletedAt: null, ...(year ? { semester: { academicYearId: year.id } } : {}) },
@@ -84,6 +87,7 @@ router.get('/', asyncHandler(async (req, res) => {
       enrollments,
       classrooms,
       subjects,
+      evaluationTypes,
       assessments: assessments.reduce((total, row) => total + row._count._all, 0),
       bulletins: reportCards.reduce((total, row) => total + row._count._all, 0),
       publishedBulletins: reportCards

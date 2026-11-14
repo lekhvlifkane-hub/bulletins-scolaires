@@ -31,6 +31,12 @@ function reponse(data: unknown, status = 200) {
   );
 }
 
+/** Les onglets Radix s'activent au mousedown : les deux événements sont envoyés. */
+function choisirOnglet(nom: string) {
+  fireEvent.mouseDown(screen.getByRole('tab', { name: nom }));
+  fireEvent.click(screen.getByRole('tab', { name: nom }));
+}
+
 describe('ClassesPage', () => {
   beforeEach(() => {
     vi.mocked(api.fetch).mockReset();
@@ -72,9 +78,23 @@ describe('ClassesPage', () => {
     });
   });
 
+  it('opens the requested tab when the URL carries ?onglet= (deep link from Premiers pas)', async () => {
+    render(
+      <MemoryRouter initialEntries={['/classes?onglet=classes']}>
+        <ClassesPage />
+      </MemoryRouter>,
+    );
+
+    // L'onglet « Classes » est actif dès l'arrivée, sans clic.
+    expect(screen.getByRole('tab', { name: 'Classes' })).toHaveAttribute('data-state', 'active');
+    expect(await screen.findByText('Aucune classe pour le moment')).toBeInTheDocument();
+  });
+
   it('creates a classroom with its school year, level and optional series', async () => {
     render(<MemoryRouter><ClassesPage /></MemoryRouter>);
 
+    // Le formulaire et la liste vivent dans l'onglet « Classes ».
+    choisirOnglet('Classes');
     expect(await screen.findByText('Aucune classe pour le moment')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Nom de la classe'), { target: { value: '6e A' } });
     fireEvent.change(screen.getByLabelText('Série (facultatif)'), {
@@ -168,6 +188,8 @@ describe('ClassesPage', () => {
     });
 
     render(<MemoryRouter><ClassesPage /></MemoryRouter>);
+    // Les niveaux, séries et l'action groupée vivent dans l'onglet dédié.
+    choisirOnglet('Niveaux et séries');
     const createAllButton = await screen.findByRole('button', {
       name: 'Créer les 7 classes · année active',
     });
@@ -198,6 +220,8 @@ describe('ClassesPage', () => {
     });
     render(<MemoryRouter><ClassesPage /></MemoryRouter>);
 
+    // L'avertissement et le bouton groupé vivent dans l'onglet « Niveaux et séries ».
+    choisirOnglet('Niveaux et séries');
     expect(await screen.findByText(
       'Activez une année scolaire pour créer automatiquement une classe par niveau.',
     )).toBeInTheDocument();
