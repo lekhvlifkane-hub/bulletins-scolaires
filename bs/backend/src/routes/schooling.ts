@@ -12,7 +12,13 @@ const router = Router();
 const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'La date de fin doit être après la date de début' });
 const yearUpdateSchema = z.object({ name: z.string().trim().min(5).optional(), startsAt: z.coerce.date().optional(), endsAt: z.coerce.date().optional(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() });
 const namedSchema = z.object({ name: z.string().trim().min(1), sortOrder: z.number().int().optional(), levelId: z.string().optional(), code: z.string().trim().min(1).optional() });
-const classSchema = z.object({ name: z.string().trim().min(1), academicYearId: z.string(), levelId: z.string(), seriesId: z.string().nullable().optional() });
+const classSchema = z.object({
+  name: z.string().trim().min(1),
+  academicYearId: z.string(),
+  levelId: z.string(),
+  seriesId: z.string().nullable().optional(),
+  mainTeacherName: z.string().trim().max(120).nullish(),
+});
 const semesterDateSchema = z.object({
   startsAt: z.coerce.date(),
   endsAt: z.coerce.date(),
@@ -228,6 +234,47 @@ router.get('/series', asyncHandler(async(req,res)=>{const schoolId=requireSchool
 router.post('/series', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.parse(req.body);if(data.levelId&&!await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}}))throw new HttpError(404,'Niveau introuvable');const series=await prisma.series.create({data:{schoolId,name:data.name,levelId:data.levelId}});res.status(201).json({series});}));
 router.get('/classes', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({classes:await prisma.classroom.findMany({where:{schoolId,deletedAt:null},include:{academicYear:true,level:true,series:true,_count:{select:{enrollments:{where:{status:'ACTIVE',deletedAt:null}}}}},orderBy:{name:'asc'}})});}));
 router.post('/classes', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=classSchema.parse(req.body);const year=await prisma.academicYear.findFirst({where:{id:data.academicYearId,schoolId,deletedAt:null}});const level=await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}});if(!year||!level)throw new HttpError(404,'Année ou niveau introuvable');if(year.status==='CLOSED')throw new HttpError(409,"L'année scolaire est clôturée");const classroom=await prisma.classroom.create({data:{...data,schoolId}});res.status(201).json({classroom});}));
+router.patch('/classes/:id', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = classSchema
+    .pick({ name: true, seriesId: true, mainTeacherName: true })
+    .partial()
+    .parse(req.body);
+  const classroom = await prisma.classroom.findFirst({
+    where: { id: req.params.id, schoolId, deletedAt: null },
+    include: { academicYear: true },
+  });
+  if (!classroom) throw new HttpError(404, 'Classe introuvable');
+  if (classroom.academicYear.status === 'CLOSED') {
+    throw new HttpError(409, "L'année scolaire est clôturée");
+  }
+  const updated = await prisma.classroom.update({
+    where: { id: classroom.id },
+    data: {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.seriesId !== undefined ? { seriesId: data.seriesId } : {}),
+      ...(data.mainTeacherName !== undefined
+        ? { mainTeacherName: data.mainTeacherName?.trim() || null }
+        : {}),
+    },
+    include: {
+      academicYear: true,
+      level: true,
+      series: true,
+      _count: { select: { enrollments: { where: { status: 'ACTIVE', deletedAt: null } } } },
+    },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'CLASSROOM_UPDATED',
+    entityType: 'Classroom',
+    entityId: updated.id,
+    metadata: { ...data },
+  });
+  res.json({ classroom: updated });
+}));
 router.get('/subjects', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({subjects:await prisma.subject.findMany({where:{schoolId,deletedAt:null},orderBy:{name:'asc'}})});}));router.post('/subjects', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.extend({code:z.string().trim().min(1)}).parse(req.body);const subject=await prisma.subject.create({data:{schoolId,name:data.name,code:data.code}});res.status(201).json({subject});}));
 /**
  * Affectations discipline / classe avec coefficient.

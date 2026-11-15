@@ -65,14 +65,14 @@ type ParsedRow = {
   error?: string;
   duplicate?: boolean;
   candidates?: ImportCandidate[];
-  action?: 'CREATE' | 'LINK';
+  action?: 'CREATE' | 'LINK' | 'UPDATE';
   candidateId?: string;
 };
 
 type ImportResult = {
   row: number;
   matricule: string | null;
-  status: 'created' | 'linked' | 'skipped';
+  status: 'created' | 'linked' | 'updated' | 'skipped';
   error?: string;
 };
 
@@ -375,7 +375,12 @@ export function StudentsPage() {
   const previewCounts = useMemo(() => {
     const rows = preview ?? [];
     const ready = (row: ParsedRow) =>
-      Boolean(row.data && !row.error && (!row.duplicate || (row.action === 'LINK' && row.candidateId)));
+      Boolean(
+        row.data &&
+        !row.error &&
+        (row.action === 'CREATE' ||
+          ((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
+      );
     return {
       valid: rows.filter(ready).length,
       skipped: rows.filter((row) => !ready(row)).length,
@@ -426,8 +431,10 @@ export function StudentsPage() {
       const serverPreview = await lireReponse<{
         rows: {
           row: number;
-          status: 'READY' | 'DUPLICATE' | 'ERROR';
+          status: 'READY' | 'DUPLICATE' | 'UPDATE' | 'ERROR';
           error: string | null;
+          suggestedAction: 'CREATE' | 'LINK' | 'UPDATE';
+          suggestedCandidateId: string | null;
           candidates: ImportCandidate[];
           classroom: unknown;
         }[];
@@ -441,7 +448,11 @@ export function StudentsPage() {
           error: checked.error ?? undefined,
           duplicate: checked.status === 'DUPLICATE',
           candidates: checked.candidates,
-          ...(checked.status === 'READY' ? { action: 'CREATE' as const } : {}),
+          ...(checked.status === 'READY'
+            ? { action: 'CREATE' as const }
+            : checked.status === 'UPDATE' && checked.suggestedCandidateId
+              ? { action: 'UPDATE' as const, candidateId: checked.suggestedCandidateId }
+              : {}),
         };
       }));
     } catch (cause) {
@@ -454,7 +465,10 @@ export function StudentsPage() {
   const importStudents = async () => {
     if (!preview) return;
     const rows = preview.filter((row) =>
-      row.data && !row.error && (!row.duplicate || (row.action === 'LINK' && row.candidateId)),
+      row.data &&
+      !row.error &&
+      (row.action === 'CREATE' ||
+        ((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
     );
     if (rows.length === 0) {
       setError('Aucune ligne valide à importer.');
@@ -470,7 +484,7 @@ export function StudentsPage() {
           students: rows.map((row) => ({
             row: row.line,
             student: row.data,
-            action: row.duplicate ? 'LINK' : 'CREATE',
+            action: row.action ?? 'CREATE',
             ...(row.candidateId ? { candidateId: row.candidateId } : {}),
           })),
         }),
@@ -479,12 +493,16 @@ export function StudentsPage() {
         importedCount: number;
         createdCount: number;
         linkedCount: number;
+        updatedCount: number;
         skippedCount: number;
         results: ImportResult[];
       }>(response, 'Import impossible');
       const skipped = result.results.filter((item) => item.status === 'skipped');
       const previewSkipped = preview.filter((row) =>
-        !row.data || row.error || (row.duplicate && row.action !== 'LINK'),
+        !row.data ||
+        row.error ||
+        (row.action !== 'CREATE' &&
+          !((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
       )
         .map((row) =>
           `ligne ${row.line}: ${row.error ?? 'doublon non confirmé'}`,
@@ -495,6 +513,7 @@ export function StudentsPage() {
       ];
       setMessage(
         `${result.createdCount} fiche(s) créée(s), ${result.linkedCount} dossier(s) rattaché(s), ` +
+          `${result.updatedCount} fiche(s) mise(s) à jour, ` +
           `${result.skippedCount + previewSkipped.length} ligne(s) ignorée(s).` +
           (skippedDetails.length ? ` ${skippedDetails.join(' · ')}` : ''),
       );
@@ -676,7 +695,13 @@ export function StudentsPage() {
                   <li key={row.line} className="space-y-2 border-b border-accent/30 pb-2 last:border-0">
                     <p>
                       Ligne {row.line}
-                      {row.error ? ` — ${row.error}` : row.duplicate ? ' — Doublon potentiel' : ' — prête'}
+                      {row.error
+                        ? ` — ${row.error}`
+                        : row.action === 'UPDATE'
+                          ? ' — mise à jour de la fiche existante'
+                          : row.duplicate
+                            ? ' — Doublon potentiel'
+                            : ' — prête'}
                     </p>
                     {row.duplicate && row.candidates?.length ? (
                       <fieldset className="ml-3 space-y-1">

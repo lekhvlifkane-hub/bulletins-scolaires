@@ -20,7 +20,7 @@ export const studentImportRequestSchema = z.object({
   students: z.array(z.object({
     row: z.number().int().min(2),
     student: z.unknown(),
-    action: z.enum(['CREATE', 'LINK']).optional(),
+    action: z.enum(['CREATE', 'LINK', 'UPDATE']).optional(),
     candidateId: z.string().min(1).optional(),
   })).min(1).max(500),
 });
@@ -39,11 +39,15 @@ type ImportCandidate = {
   }[];
 };
 
+export type ImportSuggestedAction = 'CREATE' | 'LINK' | 'UPDATE';
+
 export type AnalyzedImportRow = {
   row: number;
   data: z.infer<typeof studentImportDataSchema> | null;
   error?: string;
   candidates: ImportCandidate[];
+  suggestedAction: ImportSuggestedAction;
+  suggestedCandidateId?: string;
   classroom: {
     id: string;
     name: string;
@@ -86,6 +90,7 @@ export async function analyserImportEleves(
       data: result.success ? result.data : null,
       ...(!result.success ? { error: formatIssue(result.error) } : {}),
       candidates: [] as ImportCandidate[],
+      suggestedAction: 'CREATE' as ImportSuggestedAction,
       classroom: null as AnalyzedImportRow['classroom'],
     };
   });
@@ -208,6 +213,22 @@ export async function analyserImportEleves(
         academicYearName: enrollment.classroom.academicYear.name,
       })),
     }));
+
+    const candidateUpdate = item.candidates.find((candidate) =>
+      candidate.deletedAt === null &&
+      Boolean(item.data!.matricule) &&
+      candidate.matricule.toLocaleLowerCase('fr-FR') ===
+        item.data!.matricule!.toLocaleLowerCase('fr-FR') &&
+      candidate.birthDate?.toISOString().slice(0, 10) ===
+        item.data!.birthDate.toISOString().slice(0, 10),
+    );
+    if (candidateUpdate) {
+      item.suggestedAction = 'UPDATE';
+      item.suggestedCandidateId = candidateUpdate.id;
+    } else if (item.candidates.length > 0) {
+      item.suggestedAction = 'LINK';
+      item.suggestedCandidateId = item.candidates[0]!.id;
+    }
 
     if (item.data.academicYear && !item.data.classroom) {
       item.error = 'Une année scolaire ne peut être indiquée sans classe';

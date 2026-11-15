@@ -31,6 +31,7 @@ type Classroom = {
   academicYear: AcademicYear;
   level: Level;
   series: Series | null;
+  mainTeacherName: string | null;
   _count: { enrollments: number };
 };
 
@@ -89,6 +90,7 @@ export function ClassesPage() {
   const [levelId, setLevelId] = useState('');
   const [seriesId, setSeriesId] = useState('');
   const [name, setName] = useState('');
+  const [mainTeacherName, setMainTeacherName] = useState('');
   const [yearName, setYearName] = useState('');
   const [yearStartsAt, setYearStartsAt] = useState('');
   const [yearEndsAt, setYearEndsAt] = useState('');
@@ -203,16 +205,39 @@ export function ClassesPage() {
           academicYearId,
           levelId,
           seriesId: seriesId || null,
+          mainTeacherName: mainTeacherName.trim() || null,
         }),
       });
       await lireReponse<{ classroom: Classroom }>(response, 'Impossible de créer la classe');
       setName('');
+      setMainTeacherName('');
       setMessage('La classe a été créée.');
       await loadClasses();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de créer la classe');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const updateMainTeacher = async (classroom: Classroom, value: string) => {
+    const next = value.trim();
+    if (next === (classroom.mainTeacherName ?? '')) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await api.fetch(`/api/schooling/classes/${classroom.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mainTeacherName: next || null }),
+      });
+      await lireReponse<{ classroom: Classroom }>(
+        response,
+        'Impossible de modifier le professeur principal',
+      );
+      setMessage(`Professeur principal de ${classroom.name} mis à jour.`);
+      await loadClasses();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Impossible de modifier le professeur principal');
     }
   };
 
@@ -843,6 +868,16 @@ export function ClassesPage() {
                 maxLength={100}
               />
             </label>
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Professeur principal <span className="font-normal text-slate-400">(facultatif)</span>
+              <input
+                className={inputClass}
+                value={mainTeacherName}
+                onChange={(event) => setMainTeacherName(event.target.value)}
+                placeholder="Nom du professeur principal"
+                maxLength={120}
+              />
+            </label>
             <div className="sm:col-span-2 xl:col-span-4">
               <Button type="submit" disabled={!canCreate || saving || !academicYearId || !levelId}>
                 <Plus aria-hidden="true" className="h-4 w-4" />
@@ -877,11 +912,12 @@ export function ClassesPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[620px] text-left text-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-5 py-3.5">Classe</th>
                     <th className="px-5 py-3.5">Niveau / série</th>
+                    <th className="px-5 py-3.5">Professeur principal</th>
                     <th className="px-5 py-3.5">Année scolaire</th>
                     <th className="px-5 py-3.5 text-right">Effectif</th>
                   </tr>
@@ -899,6 +935,19 @@ export function ClassesPage() {
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         {classroom.level.name}{classroom.series ? ` · ${classroom.series.name}` : ''}
+                      </td>
+                      <td className="px-5 py-4">
+                        <input
+                          className="w-full min-w-[150px] rounded-lg border border-transparent bg-transparent px-2 py-1 text-slate-600 outline-none transition hover:border-slate-200 focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-600/10"
+                          aria-label={`Professeur principal de ${classroom.name}`}
+                          defaultValue={classroom.mainTeacherName ?? ''}
+                          placeholder="Non renseigné"
+                          maxLength={120}
+                          onBlur={(event) => void updateMainTeacher(classroom, event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') event.currentTarget.blur();
+                          }}
+                        />
                       </td>
                       <td className="px-5 py-4">
                         <span className="inline-flex items-center gap-2 text-slate-600">

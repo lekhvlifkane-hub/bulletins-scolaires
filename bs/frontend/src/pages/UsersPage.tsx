@@ -26,7 +26,8 @@ export function UsersPage() {
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', email: '', role: 'ASSISTANT' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const maximumAccounts = 3;
+  const [accountMode, setAccountMode] = useState<'SOLO' | 'EQUIPE'>('EQUIPE');
+  const [maximumAccounts, setMaximumAccounts] = useState(3);
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +40,8 @@ export function UsersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erreur de chargement');
       setUsers(data.users ?? []);
+      setAccountMode(data.accountMode === 'SOLO' ? 'SOLO' : 'EQUIPE');
+      setMaximumAccounts(typeof data.maxUsers === 'number' ? data.maxUsers : 3);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -139,6 +142,29 @@ export function UsersPage() {
     }
   };
 
+  const resetPassword = async (u: User) => {
+    if (!confirm(`Réinitialiser le mot de passe de ${u.name} ? Ses sessions seront fermées.`)) return;
+    setError(null);
+    setMessage(null);
+    setTemporaryPassword(null);
+    setActionLoading(u.id);
+    try {
+      const query = isPlatformAdmin && u.schoolId ? `?schoolId=${encodeURIComponent(u.schoolId)}` : '';
+      const res = await api.fetch(`/api/users/${u.id}/reset-password${query}`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Réinitialisation impossible');
+      setMessage('Mot de passe réinitialisé');
+      setTemporaryPassword(data.temporaryPassword ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -172,7 +198,8 @@ export function UsersPage() {
       {(!isPlatformAdmin || selectedSchoolId) && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            {users.length}/{maximumAccounts} comptes utilisés pour cet établissement.
+            {users.length}/{maximumAccounts} comptes utilisés pour cet établissement
+            {accountMode === 'SOLO' ? ' · mode compte unique' : ''}.
           </p>
           <form onSubmit={create} className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-4">
           <input
@@ -207,7 +234,11 @@ export function UsersPage() {
             </Button>
           </form>
           {users.length >= maximumAccounts ? (
-            <p className="text-sm text-amber-700">La limite de trois comptes est atteinte.</p>
+            <p className="text-sm text-amber-700">
+              {accountMode === 'SOLO'
+                ? 'Cet établissement fonctionne avec un compte unique : aucun autre utilisateur ne peut être créé.'
+                : `La limite de ${maximumAccounts} comptes est atteinte.`}
+            </p>
           ) : null}
         </div>
       )}
@@ -259,6 +290,16 @@ export function UsersPage() {
                           >
                             {u.isActive ? 'Désactiver' : 'Activer'}
                           </Button>
+                          {isPlatformAdmin && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={actionLoading === u.id}
+                              onClick={() => void resetPassword(u)}
+                            >
+                              Réinitialiser le mot de passe
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"

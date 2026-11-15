@@ -260,6 +260,8 @@ export async function construireSnapshotAnnuel(options: {
       email: school.email,
       agrement: school.accreditationNumber,
       logoDataUrl: school.logoDataUrl,
+      chefEtablissement: school.headmasterName,
+      professeurPrincipal: enrollment.classroom.mainTeacherName,
       autorite: null,
       devise: null,
       intituleDocument: 'Bilan annuel',

@@ -544,14 +544,19 @@ function rangCellule(rang: number | null): string {
 
 type Matiere = SnapshotBulletin['matieres'][number];
 
-/** Cellule d'une catégorie : pas de groupe, moyenne affichée, ou manque chiffré. */
-function celluleGroupe(matiere: Matiere, categorie: 'DEVOIR' | 'COMPOSITION'): string {
-  const groupe = matiere.groupes.find((g) => g.category === categorie);
-  if (!groupe) return '—';
-  if (groupe.moyenneAffichee === null) {
-    return `Non calculable (${groupe.notesValides}/${groupe.notesAttendues} note(s))`;
-  }
-  return groupe.moyenneAffichee;
+function celluleNote(
+  matiere: Matiere,
+  categorie: 'DEVOIR' | 'COMPOSITION',
+  position: number
+): string {
+  const note = matiere.groupes
+    .filter((groupe) => groupe.category === categorie)
+    .flatMap((groupe) => groupe.notes)
+    .find((item) => item.position === position);
+  if (!note) return '—';
+  if (note.status === 'ABSENT') return 'ABS';
+  if (note.status === 'NON_SAISIE' || note.status === 'ANNULEE' || note.score === null) return '—';
+  return note.score;
 }
 
 function lignesMatieres(s: SnapshotBulletin): Cellule[][] {
@@ -563,8 +568,9 @@ function lignesMatieres(s: SnapshotBulletin): Cellule[][] {
         (matiere.teacherName ? `\nEnseignant : ${matiere.teacherName}` : ''),
       valeur: matiere.comptabilisee ? undefined : 'Non comptabilisée',
     },
-    { texte: celluleGroupe(matiere, 'DEVOIR'), aligne: 'centre' },
-    { texte: celluleGroupe(matiere, 'COMPOSITION'), aligne: 'centre' },
+    { texte: celluleNote(matiere, 'DEVOIR', 1), aligne: 'centre' },
+    { texte: celluleNote(matiere, 'DEVOIR', 2), aligne: 'centre' },
+    { texte: celluleNote(matiere, 'COMPOSITION', 1), aligne: 'centre' },
     {
       texte: matiere.moyenneAffichee ?? 'Non calculable',
       aligne: 'centre',
@@ -686,6 +692,36 @@ function mentionDe(meta: MetaBulletin, genereLe: string | null): string {
   );
 }
 
+function blocSignature(
+  plan: Plan,
+  x: number,
+  y: number,
+  largeur: number,
+  titre: string,
+  nom: string | null | undefined
+): number {
+  const lignes = nom ? [titre, nom] : [titre];
+  const hauteurTexte = tracer(
+    plan,
+    lignes,
+    x,
+    largeur,
+    y,
+    'centre',
+    'normal',
+    TAILLE.petit,
+    COULEUR.doux
+  );
+  const boxY = y + hauteurTexte + 3;
+  plan.doc
+    .rect(x, boxY, largeur, 36)
+    .lineWidth(0.6)
+    .strokeColor(COULEUR.trait)
+    .stroke();
+  plan.doc.strokeColor(COULEUR.encre);
+  return boxY + 40 - y;
+}
+
 /** Une page par bulletin. Le contenu vient uniquement du snapshot et des colonnes texte. */
 function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, textes: TextesLibres): void {
   const debut = plan.page;
@@ -783,15 +819,16 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
     plan,
     'Disciplines',
     [
-      { titre: 'N°', largeur: 22, aligne: 'centre' },
-      { titre: 'Disciplines', largeur: 116 },
-      { titre: 'Devoirs', largeur: 50, aligne: 'centre' },
-      { titre: 'Compositions', largeur: 58, aligne: 'centre' },
-      { titre: `Moy./${s.regles.baremeParDefaut}`, largeur: 48, aligne: 'centre' },
-      { titre: 'Coef.', largeur: 32, aligne: 'centre' },
-      { titre: 'Points', largeur: 42, aligne: 'centre' },
-      { titre: 'Rang', largeur: 34, aligne: 'centre' },
-      { titre: 'Appréciation', largeur: ZONE.largeur - 402 },
+      { titre: 'N°', largeur: 20, aligne: 'centre' },
+      { titre: 'Disciplines', largeur: 104 },
+      { titre: 'Dev 1', largeur: 34, aligne: 'centre' },
+      { titre: 'Dev 2', largeur: 34, aligne: 'centre' },
+      { titre: 'Compo', largeur: 42, aligne: 'centre' },
+      { titre: `Moy./${s.regles.baremeParDefaut}`, largeur: 45, aligne: 'centre' },
+      { titre: 'Coef.', largeur: 30, aligne: 'centre' },
+      { titre: 'Points', largeur: 40, aligne: 'centre' },
+      { titre: 'Rang', largeur: 32, aligne: 'centre' },
+      { titre: 'Appréciation', largeur: ZONE.largeur - 381 },
     ],
     lignesMatieres(s)
   );
@@ -910,21 +947,25 @@ function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, t
     }
   }
 
-  ecrire(plan, 'Cachet et signature de l\'établissement', {
-    x: ZONE.x + ZONE.largeur - 200,
-    largeur: 200,
-    aligne: 'droite',
-    taille: TAILLE.petit,
-    couleur: COULEUR.doux,
-    avant: 12,
-  });
-  plan.doc
-    .rect(ZONE.x + ZONE.largeur - 200, plan.y, 200, 40)
-    .lineWidth(0.6)
-    .strokeColor(COULEUR.trait)
-    .stroke();
-  plan.doc.strokeColor(COULEUR.encre);
-  plan.y += 44;
+  const signatureY = plan.y + 12;
+  const largeurBloc = 200;
+  const gauche = blocSignature(
+    plan,
+    ZONE.x,
+    signatureY,
+    largeurBloc,
+    'Professeur principal',
+    s.enTete.professeurPrincipal
+  );
+  const droite = blocSignature(
+    plan,
+    ZONE.x + ZONE.largeur - largeurBloc,
+    signatureY,
+    largeurBloc,
+    "Le Chef d'établissement",
+    s.enTete.chefEtablissement
+  );
+  plan.y = signatureY + Math.max(gauche, droite);
 
   // pied de page commun à toutes les pages de ce bulletin
   for (let page = debut; page <= plan.page; page += 1) {

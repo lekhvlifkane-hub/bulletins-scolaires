@@ -16,20 +16,20 @@ const poids = z.number().min(0).max(999.99);
 
 /**
  * Logo : data URL PNG/JPEG uniquement. Le format est volontairement restreint
- * (pas de SVG) et la taille décodée est plafonnée à 1 Mio.
+ * (pas de SVG) et la taille décodée est plafonnée à 2 Mio.
  */
-const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const LOGO_DATA_URL_MAX_LENGTH = Math.ceil((LOGO_MAX_BYTES * 4) / 3) + 64;
 const logoDataUrlSchema = z
   .string()
-  .max(LOGO_DATA_URL_MAX_LENGTH, 'Logo trop volumineux (1 Mo maximum)')
+  .max(LOGO_DATA_URL_MAX_LENGTH, 'Logo trop volumineux (2 Mo maximum)')
   .regex(
     /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/,
     'Logo invalide : utilisez une image PNG ou JPEG',
   )
   .refine(
     (value) => Buffer.from(value.slice(value.indexOf(',') + 1), 'base64').length <= LOGO_MAX_BYTES,
-    'Logo trop volumineux (1 Mo maximum)',
+    'Logo trop volumineux (2 Mo maximum)',
   );
 
 /**
@@ -65,6 +65,8 @@ const schoolSchema = z
     phone: z.string().trim().optional(),
     email: z.string().trim().toLowerCase().email().optional(),
     accreditationNumber: z.string().trim().optional(),
+    headmasterName: z.string().trim().max(120).nullable().optional(),
+    accountMode: z.enum(['SOLO', 'EQUIPE']).optional(),
     logoDataUrl: logoDataUrlSchema.nullable().optional(),
     isActive: z.boolean().optional(),
     adminName: z.string().trim().min(2).optional(),
@@ -110,6 +112,9 @@ router.post(
           city: data.city,
           phone: data.phone,
           status: 'PENDING',
+          // Une inscription client crée un espace à compte unique. Les
+          // établissements existants restent en mode EQUIPE par défaut.
+          accountMode: 'SOLO',
           isActive: false,
         },
       });

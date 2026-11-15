@@ -60,7 +60,10 @@ type SessionSchool = {
   phone: string | null;
   email: string | null;
   accreditationNumber: string | null;
+  headmasterName: string | null;
   logoDataUrl: string | null;
+  status: 'PENDING' | 'ACTIVE' | 'SUSPENDED';
+  accountMode: 'SOLO' | 'EQUIPE';
   isActive: boolean;
   createdAt: string;
 } & SchoolRules;

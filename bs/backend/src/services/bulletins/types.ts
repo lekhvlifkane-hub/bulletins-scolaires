@@ -22,6 +22,8 @@ export interface NoteSnapshot {
   typeName: string;
   category: CategorieSnapshot;
   statutEvaluation: string;
+  /** Position de l'évaluation dans sa catégorie (1 = Devoir 1, 2 = Devoir 2…). */
+  position?: number;
   outOf: string;
   score: string | null;
   status: 'SAISIE' | 'ABSENT' | 'ANNULEE' | 'NON_SAISIE';
@@ -86,6 +88,9 @@ export interface EnTeteSnapshot {
   agrement: string | null;
   /** Logo figé dans le snapshot (data URL PNG/JPEG), absent des anciens bulletins. */
   logoDataUrl?: string | null;
+  /** Noms figés pour les blocs de signature (absents des snapshots antérieurs). */
+  chefEtablissement?: string | null;
+  professeurPrincipal?: string | null;
   /** Textes laissés vides tant que l'établissement ne les a pas fournis (rien d'inventé). */
   autorite: string | null;
   devise: string | null;

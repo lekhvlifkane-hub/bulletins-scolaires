@@ -24,7 +24,10 @@ export function publicSchool(school: School) {
     phone: school.phone,
     email: school.email,
     accreditationNumber: school.accreditationNumber,
+    headmasterName: school.headmasterName,
     logoDataUrl: school.logoDataUrl,
+    status: school.status,
+    accountMode: school.accountMode,
     isActive: school.isActive,
     // Règles de calcul de l'établissement, modifiables depuis « Paramètres établissement ».
     // Les Decimal sont sérialisés en chaînes : aucune règle n'est convertie en nombre flottant.

@@ -11,6 +11,7 @@ import {
   analyserImportEleves,
   studentImportRequestSchema,
 } from '../services/student-import';
+import { genererPdfListeEleves } from '../services/students-pdf';
 
 const router = Router();
 const studentSchema = z.object({
@@ -36,6 +37,10 @@ const enrollmentSchema = z.object({
   isRepeating: z.boolean().default(false),
   entryType: z.enum(['NEW', 'TRANSFERRED']).optional(),
 });
+
+function memeJour(a: Date | null, b: Date): boolean {
+  return a?.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+}
 router.use(requireAuth, requireRole('SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'));
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -73,8 +78,16 @@ router.post('/import/preview', requireCsrf, asyncHandler(async (req, res) => {
   res.json({
     rows: rows.map((item) => ({
       row: item.row,
-      status: item.error ? 'ERROR' : item.candidates.length > 0 ? 'DUPLICATE' : 'READY',
+      status: item.error
+        ? 'ERROR'
+        : item.suggestedAction === 'UPDATE'
+          ? 'UPDATE'
+          : item.candidates.length > 0
+            ? 'DUPLICATE'
+            : 'READY',
       error: item.error ?? null,
+      suggestedAction: item.suggestedAction,
+      suggestedCandidateId: item.suggestedCandidateId ?? null,
       candidates: item.candidates.map((candidate) => ({
         ...candidate,
         birthDate: candidate.birthDate?.toISOString() ?? null,
@@ -93,7 +106,7 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
   const outcomes: Array<{
     row: number;
     matricule: string | null;
-    status: 'created' | 'linked' | 'skipped';
+    status: 'created' | 'linked' | 'updated' | 'skipped';
     error?: string;
   }> = [];
   const ready: typeof rows = [];
@@ -114,17 +127,32 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
       });
       continue;
     }
-    if (row.candidates.length > 0) {
+
+    if (requestRow.action === 'UPDATE') {
+      const candidate = row.candidates.find((item) => item.id === requestRow.candidateId);
+      const memeMatricule = Boolean(row.data.matricule) && candidate != null &&
+        candidate.matricule.toLocaleLowerCase('fr-FR') ===
+          row.data.matricule!.toLocaleLowerCase('fr-FR');
+      if (!candidate || !memeMatricule || !memeJour(candidate.birthDate, row.data.birthDate)) {
+        outcomes.push({
+          row: row.row,
+          matricule,
+          status: 'skipped',
+          error: 'Mise à jour impossible : le matricule et la date de naissance ne correspondent plus à la fiche choisie.',
+        });
+        continue;
+      }
+    } else if (row.candidates.length > 0) {
       if (requestRow.action !== 'LINK' || !row.candidates.some((candidate) => candidate.id === requestRow.candidateId)) {
         outcomes.push({
           row: row.row,
           matricule,
           status: 'skipped',
-          error: 'Doublon potentiel détecté; confirmez le rattachement à une fiche existante.',
+          error: 'Doublon potentiel détecté; confirmez le rattachement à une fiche existante ou la mise à jour.',
         });
         continue;
       }
-    } else if (requestRow.action === 'LINK' || requestRow.candidateId) {
+    } else if (requestRow.action === 'LINK' || requestRow.action === 'UPDATE' || requestRow.candidateId) {
       outcomes.push({
         row: row.row,
         matricule,
@@ -164,7 +192,7 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
     const result: Array<{
       row: number;
       matricule: string | null;
-      status: 'created' | 'linked' | 'skipped';
+      status: 'created' | 'linked' | 'updated' | 'skipped';
       error?: string;
       studentId?: string;
       classroomId?: string;
@@ -175,9 +203,45 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
       const data = row.data!;
       let studentId: string;
       let matricule: string;
-      let status: 'created' | 'linked';
+      let status: 'created' | 'linked' | 'updated';
 
-      if (requestRow.action === 'LINK') {
+      if (requestRow.action === 'UPDATE') {
+        const candidate = row.candidates.find((item) => item.id === requestRow.candidateId);
+        const current = candidate
+          ? await transaction.student.findFirst({
+              where: { id: candidate.id, schoolId, deletedAt: null },
+              select: { id: true, matricule: true, birthDate: true },
+            })
+          : null;
+        const memeMatricule = Boolean(current && data.matricule) &&
+          current!.matricule.toLocaleLowerCase('fr-FR') ===
+            data.matricule!.toLocaleLowerCase('fr-FR');
+        if (!current || !memeMatricule || !memeJour(current.birthDate, data.birthDate)) {
+          result.push({
+            row: row.row,
+            matricule: candidate?.matricule ?? null,
+            status: 'skipped',
+            error: 'Mise à jour impossible : la fiche a changé ou ne correspond plus au matricule et à la date de naissance.',
+          });
+          continue;
+        }
+        const updated = await transaction.student.update({
+          where: { id: current.id },
+          data: {
+            lastName: data.lastName,
+            firstNames: data.firstNames,
+            birthDate: data.birthDate,
+            birthPlace: data.birthPlace,
+            sex: data.sex,
+            address: data.address,
+            guardianName: data.guardianName,
+            guardianPhone: data.guardianPhone,
+          },
+        });
+        studentId = updated.id;
+        matricule = updated.matricule;
+        status = 'updated';
+      } else if (requestRow.action === 'LINK') {
         const candidate = row.candidates.find((item) => item.id === requestRow.candidateId)!;
         const current = await transaction.student.findFirst({
           where: { id: candidate.id, schoolId, deletedAt: null },
@@ -262,8 +326,9 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
           result.push({
             row: row.row,
             matricule,
-            status: 'skipped',
+            status: status === 'updated' ? 'updated' : 'skipped',
             studentId,
+            classroomId: row.classroom.id,
           });
           continue;
         }
@@ -310,7 +375,12 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
       req,
       schoolId,
       userId: req.currentUser!.id,
-      action: item.status === 'created' ? 'STUDENT_CREATED' : 'STUDENT_IMPORT_LINKED',
+      action:
+        item.status === 'created'
+          ? 'STUDENT_CREATED'
+          : item.status === 'updated'
+            ? 'STUDENT_IMPORT_UPDATED'
+            : 'STUDENT_IMPORT_LINKED',
       entityType: 'Student',
       entityId: item.studentId,
       metadata: {
@@ -324,14 +394,56 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
   outcomes.sort((a, b) => a.row - b.row);
   const createdCount = outcomes.filter((item) => item.status === 'created').length;
   const linkedCount = outcomes.filter((item) => item.status === 'linked').length;
+  const updatedCount = outcomes.filter((item) => item.status === 'updated').length;
   res.status(201).json({
-    importedCount: createdCount + linkedCount,
+    importedCount: createdCount + linkedCount + updatedCount,
     createdCount,
     linkedCount,
+    updatedCount,
     skippedCount: outcomes.filter((item) => item.status === 'skipped').length,
     results: outcomes,
   });
 }));
+router.get('/export/pdf', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const [school, students] = await Promise.all([
+    prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { name: true, officialName: true, city: true, phone: true },
+    }),
+    prisma.student.findMany({
+      where: {
+        schoolId,
+        deletedAt: null,
+        ...(search
+          ? {
+              OR: [
+                { matricule: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { firstNames: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        enrollments: {
+          where: { deletedAt: null, status: 'ACTIVE' },
+          include: { classroom: { include: { academicYear: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstNames: 'asc' }],
+    }),
+  ]);
+  if (!school) throw new HttpError(404, 'Établissement introuvable');
+  const pdf = await genererPdfListeEleves(school, students, search);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="liste-eleves.pdf"');
+  res.send(pdf);
+}));
+
 router.get('/:id', asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const student = await prisma.student.findFirst({

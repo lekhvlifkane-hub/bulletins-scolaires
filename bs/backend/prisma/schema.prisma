@@ -81,6 +81,14 @@ enum SchoolStatus {
   REJECTED
 }
 
+/// Mode de gestion des comptes d'un établissement.
+/// - SOLO : un seul compte client, sans gestion d'équipe (nouvelles inscriptions).
+/// - EQUIPE : plusieurs comptes avec rôles (établissements existants, rétrocompatibilité).
+enum AccountMode {
+  SOLO
+  EQUIPE
+}
+
 /// Nature d'une règle d'appréciation automatique.
 /// - MATIERE : appréciation par discipline selon la moyenne de la matière.
 /// - MENTION : mention globale du bulletin selon la moyenne générale.
@@ -102,6 +110,19 @@ model AppMeta {
   updatedAt DateTime @updatedAt
 }
 
+/// Paramètres de sauvegarde (table singleton conservée pour compatibilité).
+model BackupSetting {
+  id                  String    @id @default("singleton")
+  actif               Boolean   @default(false)
+  heure               Int       @default(2)
+  retentionJours      Int       @default(30)
+  derniereTentativeAt DateTime?
+  derniereReussiteAt  DateTime?
+  dernierStatut       String?
+  dernierMessage      String?
+  updatedAt           DateTime  @updatedAt
+}
+
 model School {
   id                  String       @id @default(cuid())
   name                String
@@ -112,8 +133,10 @@ model School {
   phone               String?
   email               String?
   accreditationNumber String?
+  headmasterName      String?
   logoDataUrl         String?      @db.Text
   status              SchoolStatus @default(ACTIVE)
+  accountMode         AccountMode  @default(EQUIPE)
   isActive            Boolean      @default(true)
 
   // Règles de calcul de l'établissement (defaults = valeurs à valider, voir docs/A_VALIDER.md)
@@ -137,19 +160,19 @@ model School {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  users               User[]
-  auditLogs           AuditLog[]
-  temporaryAccess     TemporaryAccessGrant[]
-  academicYears       AcademicYear[]
-  levels              Level[]
-  series              Series[]
-  classrooms          Classroom[]
-  students            Student[]
-  subjects            Subject[]
-  attendanceRecords   AttendanceRecord[]
-  appreciations       Appreciation[]
-  appreciationRules   AppreciationRule[]
-  councilDecisions    CouncilDecision[]
+  users             User[]
+  auditLogs         AuditLog[]
+  temporaryAccess   TemporaryAccessGrant[]
+  academicYears     AcademicYear[]
+  levels            Level[]
+  series            Series[]
+  classrooms        Classroom[]
+  students          Student[]
+  subjects          Subject[]
+  attendanceRecords AttendanceRecord[]
+  appreciations     Appreciation[]
+  appreciationRules AppreciationRule[]
+  councilDecisions  CouncilDecision[]
 
   @@index([deletedAt])
 }
@@ -222,21 +245,23 @@ model Series {
 }
 
 model Classroom {
-  id             String             @id @default(cuid())
-  schoolId       String
-  school         School             @relation(fields: [schoolId], references: [id])
-  academicYearId String
-  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id])
-  levelId        String
-  level          Level              @relation(fields: [levelId], references: [id])
-  seriesId       String?
-  series         Series?            @relation(fields: [seriesId], references: [id])
-  name           String
-  deletedAt      DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  enrollments    Enrollment[]
-  subjects       ClassroomSubject[]
+  id              String             @id @default(cuid())
+  schoolId        String
+  school          School             @relation(fields: [schoolId], references: [id])
+  academicYearId  String
+  academicYear    AcademicYear       @relation(fields: [academicYearId], references: [id])
+  levelId         String
+  level           Level              @relation(fields: [levelId], references: [id])
+  seriesId        String?
+  series          Series?            @relation(fields: [seriesId], references: [id])
+  name            String
+  /// Professeur principal affiché sur le bulletin (champ libre).
+  mainTeacherName String?
+  deletedAt       DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  enrollments     Enrollment[]
+  subjects        ClassroomSubject[]
 
   @@unique([schoolId, academicYearId, name])
   @@index([schoolId, academicYearId])
@@ -265,17 +290,17 @@ model Student {
 }
 
 model Enrollment {
-  id                String             @id @default(cuid())
+  id                String               @id @default(cuid())
   schoolId          String
   studentId         String
-  student           Student            @relation(fields: [studentId], references: [id])
+  student           Student              @relation(fields: [studentId], references: [id])
   classroomId       String
-  classroom         Classroom          @relation(fields: [classroomId], references: [id])
-  status            EnrollmentStatus   @default(ACTIVE)
+  classroom         Classroom            @relation(fields: [classroomId], references: [id])
+  status            EnrollmentStatus     @default(ACTIVE)
   entryType         EnrollmentEntryType?
   /// Élève redoublant pour cette inscription (jamais une propriété permanente de l'élève).
-  isRepeating       Boolean            @default(false)
-  enrolledAt        DateTime           @default(now())
+  isRepeating       Boolean              @default(false)
+  enrolledAt        DateTime             @default(now())
   endedAt           DateTime?
   deletedAt         DateTime?
   grades            Grade[]
@@ -477,25 +502,25 @@ model AttendanceRecord {
 }
 
 model Appreciation {
-  id           String     @id @default(cuid())
-  schoolId     String
-  school       School     @relation(fields: [schoolId], references: [id])
-  enrollmentId String
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id])
-  semesterId   String
-  semester     Semester   @relation(fields: [semesterId], references: [id])
-  subjectId    String
-  subject      Subject    @relation(fields: [subjectId], references: [id])
-  content      String
+  id            String     @id @default(cuid())
+  schoolId      String
+  school        School     @relation(fields: [schoolId], references: [id])
+  enrollmentId  String
+  enrollment    Enrollment @relation(fields: [enrollmentId], references: [id])
+  semesterId    String
+  semester      Semester   @relation(fields: [semesterId], references: [id])
+  subjectId     String
+  subject       Subject    @relation(fields: [subjectId], references: [id])
+  content       String
   /// true = texte produit par le moteur ; false = texte saisi/modifié par un utilisateur.
-  autoGenerated Boolean   @default(false)
-  createdById  String?
-  createdBy    User?      @relation("AppreciationCreator", fields: [createdById], references: [id])
-  updatedById  String?
-  updatedBy    User?      @relation("AppreciationUpdater", fields: [updatedById], references: [id])
-  deletedAt    DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  autoGenerated Boolean    @default(false)
+  createdById   String?
+  createdBy     User?      @relation("AppreciationCreator", fields: [createdById], references: [id])
+  updatedById   String?
+  updatedBy     User?      @relation("AppreciationUpdater", fields: [updatedById], references: [id])
+  deletedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@unique([enrollmentId, semesterId, subjectId])
   @@index([schoolId, enrollmentId, semesterId, deletedAt])
@@ -587,9 +612,9 @@ model ReportCard {
   motifs                String[] @default([])
 
   /// Renseignés par le moteur ou par l'établissement, jamais inventés.
-  mention         String?
-  decisionConseil String?
-  appreciation    String?
+  mention          String?
+  decisionConseil  String?
+  appreciation     String?
   /// false dès qu'un utilisateur remplace le texte automatique.
   mentionAuto      Boolean @default(true)
   decisionAuto     Boolean @default(true)
@@ -641,9 +666,9 @@ model AnnualSummary {
   effectif              Int?
   motifs                String[] @default([])
 
-  mention         String?
-  decisionConseil String?
-  appreciation    String?
+  mention          String?
+  decisionConseil  String?
+  appreciation     String?
   mentionAuto      Boolean @default(true)
   decisionAuto     Boolean @default(true)
   appreciationAuto Boolean @default(true)

@@ -4,6 +4,7 @@ import { prisma } from '../db/prisma';
 import { tenantUsers } from '../db/tenant';
 import { asyncHandler, HttpError } from '../lib/http';
 import { generateTemporaryPassword, hashPassword } from '../lib/password';
+import { destroyAllSessions } from '../lib/session';
 import { publicUser } from '../lib/serializers';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { assertPlatformAccess, requireSchoolScope } from '../middleware/school-scope';
@@ -38,17 +39,36 @@ router.get(
       if (!req.schoolScopeId) {
         throw new HttpError(400, 'schoolId requis');
       }
-      const users = await prisma.user.findMany({
-        where: { schoolId: req.schoolScopeId, deletedAt: null },
-        orderBy: { createdAt: 'asc' },
+      const [users, school] = await Promise.all([
+        prisma.user.findMany({
+          where: { schoolId: req.schoolScopeId, deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.school.findUnique({
+          where: { id: req.schoolScopeId },
+          select: { accountMode: true },
+        }),
+      ]);
+      const accountMode = school?.accountMode ?? 'EQUIPE';
+      res.json({
+        users: users.map(publicUser),
+        accountMode,
+        maxUsers: accountMode === 'SOLO' ? 1 : MAX_USERS_PER_SCHOOL,
       });
-      res.json({ users: users.map(publicUser) });
       return;
     }
 
     const schoolId = req.currentUser!.schoolId!;
-    const users = await tenantUsers(schoolId).list();
-    res.json({ users: users.map(publicUser) });
+    const [users, school] = await Promise.all([
+      tenantUsers(schoolId).list(),
+      prisma.school.findUnique({ where: { id: schoolId }, select: { accountMode: true } }),
+    ]);
+    const accountMode = school?.accountMode ?? 'EQUIPE';
+    res.json({
+      users: users.map(publicUser),
+      accountMode,
+      maxUsers: accountMode === 'SOLO' ? 1 : MAX_USERS_PER_SCHOOL,
+    });
   }),
 );
 
@@ -85,16 +105,20 @@ router.post(
     const finalPassword = password ?? generateTemporaryPassword();
     const passwordHash = await hashPassword(finalPassword);
     const user = await prisma.$transaction(async (transaction) => {
-      const school = await transaction.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "School" WHERE "id" = ${schoolId} FOR UPDATE
+      const school = await transaction.$queryRaw<Array<{ id: string; accountMode: 'SOLO' | 'EQUIPE' }>>`
+        SELECT "id", "accountMode" FROM "School" WHERE "id" = ${schoolId} FOR UPDATE
       `;
       if (school.length === 0) throw new HttpError(404, "Établissement introuvable");
 
+      const limite = school[0]!.accountMode === 'SOLO' ? 1 : MAX_USERS_PER_SCHOOL;
       const accountCount = await transaction.user.count({
         where: { schoolId, deletedAt: null },
       });
-      if (accountCount >= MAX_USERS_PER_SCHOOL) {
-        throw new HttpError(409, `La limite de ${MAX_USERS_PER_SCHOOL} comptes par établissement est atteinte`);
+      if (accountCount >= limite) {
+        const message = limite === 1
+          ? "Cet établissement fonctionne avec un compte unique : aucun autre utilisateur ne peut être créé"
+          : `La limite de ${limite} comptes par établissement est atteinte`;
+        throw new HttpError(409, message);
       }
 
       return transaction.user.create({
@@ -123,6 +147,48 @@ router.post(
       user: publicUser(user),
       temporaryPassword: password ? undefined : finalPassword,
     });
+  }),
+);
+
+router.post(
+  '/:id/reset-password',
+  requireRole('PLATFORM_ADMIN'),
+  requireCsrf,
+  asyncHandler(async (req, res) => {
+    const actor = req.currentUser!;
+    const target = await prisma.user.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+    });
+    if (!target || !target.schoolId) {
+      throw new HttpError(404, 'Utilisateur introuvable');
+    }
+    if (target.role === 'PLATFORM_ADMIN') {
+      throw new HttpError(403, 'Impossible de réinitialiser un compte plateforme');
+    }
+    await assertPlatformAccess(actor.id, target.schoolId);
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await hashPassword(temporaryPassword);
+    await prisma.user.update({
+      where: { id: target.id },
+      data: {
+        passwordHash,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        isActive: true,
+      },
+    });
+    await destroyAllSessions(target.id);
+    await writeAuditLog({
+      req,
+      schoolId: target.schoolId,
+      userId: actor.id,
+      action: 'USER_PASSWORD_RESET',
+      entityType: 'User',
+      entityId: target.id,
+      metadata: { email: target.email },
+    });
+    res.json({ temporaryPassword });
   }),
 );
 

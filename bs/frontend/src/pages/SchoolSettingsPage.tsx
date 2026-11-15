@@ -13,10 +13,11 @@ type School = {
   phone: string | null;
   email: string | null;
   accreditationNumber: string | null;
+  headmasterName: string | null;
   logoDataUrl: string | null;
 };
 
-const LOGO_MAX_BYTES = 1024 * 1024;
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const LOGO_TYPES = ['image/png', 'image/jpeg'];
 
 type Regles = {
@@ -312,6 +313,7 @@ export function SchoolSettingsPage() {
     phone: school?.phone ?? '',
     email: school?.email ?? '',
     accreditationNumber: school?.accreditationNumber ?? '',
+    headmasterName: school?.headmasterName ?? '',
     logoDataUrl: school?.logoDataUrl ?? null,
   });
   const [regles, setRegles] = useState<Regles>(REGLES_PAR_DEFAUT);
@@ -331,6 +333,7 @@ export function SchoolSettingsPage() {
         phone: school.phone ?? '',
         email: school.email ?? '',
         accreditationNumber: school.accreditationNumber ?? '',
+        headmasterName: school.headmasterName ?? '',
         logoDataUrl: school.logoDataUrl ?? null,
       });
       setRegles(reglesDepuisEcole(school));
@@ -346,7 +349,7 @@ export function SchoolSettingsPage() {
       return;
     }
     if (fichier.size > LOGO_MAX_BYTES) {
-      setError('Logo trop volumineux (1 Mo maximum)');
+      setError('Logo trop volumineux (2 Mo maximum)');
       return;
     }
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -476,6 +479,13 @@ export function SchoolSettingsPage() {
               value={form.accreditationNumber ?? ''}
               onChange={(e) => setForm({ ...form, accreditationNumber: e.target.value })}
             />
+            <input
+              className={CLASSE_CHAMP}
+              placeholder="Nom du chef d'établissement"
+              aria-label="Nom du chef d'établissement"
+              value={form.headmasterName ?? ''}
+              onChange={(e) => setForm({ ...form, headmasterName: e.target.value })}
+            />
             <textarea
               className={`md:col-span-2 ${CLASSE_CHAMP}`}
               placeholder="Adresse"
@@ -488,7 +498,7 @@ export function SchoolSettingsPage() {
         <Section titre="Logo de l'établissement">
           <p className="text-xs text-muted-foreground">
             Le logo apparaît dans l'application et en en-tête des bulletins PDF. Formats acceptés :
-            PNG ou JPEG, 1 Mo maximum.
+            PNG ou JPEG, 2 Mo maximum.
           </p>
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex h-24 w-40 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-3">
