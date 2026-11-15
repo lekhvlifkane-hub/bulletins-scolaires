@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { readSheet } from 'read-excel-file/browser';
 import writeXlsxFile from 'write-excel-file/browser';
 import { api } from '@/lib/api';
+import { telechargerPdf } from '@/lib/bulletins';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -583,6 +584,16 @@ export function StudentsPage() {
     }
   };
 
+  const exportPdf = async () => {
+    try {
+      await telechargerPdf(
+        `/api/students/export/pdf${search ? `?search=${encodeURIComponent(search)}` : ''}`,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Export PDF impossible');
+    }
+  };
+
   const downloadTemplate = async () => {
     try {
       await downloadExcel('modele-import-eleves.xlsx', [headers]);
@@ -614,6 +625,15 @@ export function StudentsPage() {
           >
             <Download aria-hidden="true" className="h-4 w-4" />
             Exporter Excel
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void exportPdf()}
+            disabled={students.length === 0}
+          >
+            <Download aria-hidden="true" className="h-4 w-4" />
+            Exporter PDF
           </Button>
         </div>
       </header>

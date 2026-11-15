@@ -83,6 +83,7 @@ describe('StudentsPage CSV', () => {
           importedCount: 2,
           createdCount: 1,
           linkedCount: 1,
+          updatedCount: 0,
           skippedCount: 0,
           results: [
             { row: 2, matricule: 'EL-1', status: 'created' },
@@ -121,7 +122,7 @@ describe('StudentsPage CSV', () => {
     fireEvent.click(screen.getByLabelText(/Diallo Awa · EL-OLD/));
     fireEvent.click(screen.getByRole('button', { name: 'Importer 2 ligne(s) confirmée(s)' }));
 
-    expect(await screen.findByText(/1 fiche\(s\) créée\(s\), 1 dossier\(s\) rattaché\(s\), 1 ligne\(s\) ignorée\(s\)/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 fiche\(s\) créée\(s\), 1 dossier\(s\) rattaché\(s\), 0 fiche\(s\) mise\(s\) à jour, 1 ligne\(s\) ignorée\(s\)/)).toBeInTheDocument();
     expect(imported).toEqual([
       {
         row: 2,

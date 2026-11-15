@@ -328,7 +328,10 @@ describe('Phase 5 — PDF d’un bulletin', () => {
             moyenne: null,
             moyenneAffichee: null,
             notesValides: 0,
-            notes: [note({ status: 'ABSENT', score: null }), note({ status: 'NON_SAISIE', score: null })],
+            notes: [
+              note({ status: 'ABSENT', score: null, position: 1 }),
+              note({ status: 'NON_SAISIE', score: null, position: 2 }),
+            ],
           }),
         ],
       }),
@@ -354,7 +357,8 @@ describe('Phase 5 — PDF d’un bulletin', () => {
 
     const texte = texteDe(resultat.journal);
     expect(texte).toContain('Non calculable');
-    expect(texte).toContain('(0/2 note(s))');
+    // une évaluation absente s'affiche comme telle dans sa colonne, jamais comme un 0
+    expect(texte).toContain('ABS');
     expect(texte).toContain('Aucune moyenne comptabilisée : élève non classé');
     expect(texte).toContain('Bulletin incomplet');
     expect(texte).toContain('Données non enregistrées sur ce document');

@@ -152,7 +152,7 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
         });
         continue;
       }
-    } else if (requestRow.action === 'LINK' || requestRow.action === 'UPDATE' || requestRow.candidateId) {
+    } else if (requestRow.action === 'LINK' || requestRow.candidateId) {
       outcomes.push({
         row: row.row,
         matricule,
@@ -430,7 +430,7 @@ router.get('/export/pdf', asyncHandler(async (req, res) => {
         enrollments: {
           where: { deletedAt: null, status: 'ACTIVE' },
           include: { classroom: { include: { academicYear: true } } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { enrolledAt: 'desc' },
           take: 1,
         },
       },

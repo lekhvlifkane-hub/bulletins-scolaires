@@ -413,7 +413,8 @@ describe('Phase 5 — snapshot du bulletin', () => {
     // « Non calculable » sur deux lignes, on reconstitue donc le texte rendu.
     const rendu = pdf.journal.emplacements.map((e) => e.texte).join(' ').replace(/\s+/g, ' ');
     expect(rendu).toContain('Non calculable');
-    expect(rendu).toMatch(/\(0\/\d note\(s\)\)/);
+    // l'évaluation absente d'histoire apparaît comme telle, pas comme un zéro
+    expect(rendu).toContain('ABS');
     expect(rendu).toContain('Bulletin incomplet');
     // Les seuls zéros isolés de ce PDF sont les deux compteurs d'absences.
     const emplacementsZero = pdf.journal.emplacements.filter((e) => /^0([.,]0+)?$/.test(e.texte.trim()));

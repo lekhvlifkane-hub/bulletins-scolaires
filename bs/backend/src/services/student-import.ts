@@ -83,7 +83,7 @@ export async function analyserImportEleves(
   schoolId: string,
   rows: z.infer<typeof studentImportRequestSchema>['students'],
 ): Promise<AnalyzedImportRow[]> {
-  const parsed = rows.map(({ row, student }) => {
+  const parsed: AnalyzedImportRow[] = rows.map(({ row, student }) => {
     const result = studentImportDataSchema.safeParse(student);
     return {
       row,

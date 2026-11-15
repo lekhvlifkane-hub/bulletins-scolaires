@@ -111,6 +111,7 @@ describe('ClassesPage', () => {
           academicYearId: 'year-1',
           levelId: 'level-1',
           seriesId: 'series-1',
+          mainTeacherName: null,
         }),
       });
     });

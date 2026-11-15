@@ -94,7 +94,7 @@ describe('Importation des élèves', () => {
         row: 3,
         matricule: 'EXISTANT',
         status: 'skipped',
-        error: 'Doublon potentiel détecté; confirmez le rattachement à une fiche existante.',
+        error: 'Doublon potentiel détecté; confirmez le rattachement à une fiche existante ou la mise à jour.',
       },
       {
         row: 4,
