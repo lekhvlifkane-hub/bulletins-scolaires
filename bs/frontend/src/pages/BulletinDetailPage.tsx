@@ -13,6 +13,7 @@ import {
   chargerBulletin,
   corrigerBulletin,
   modifierChampsLibres,
+  regenererAppreciations,
   telechargerPdf,
   type DetailBulletin,
 } from '@/lib/bulletins';
@@ -47,6 +48,8 @@ export function BulletinDetailPage() {
   const [motif, setMotif] = useState('');
   const [champs, setChamps] = useState({ mention: '', appreciation: '' });
   const [champsModifies, setChampsModifies] = useState({ mention: false, appreciation: false });
+  const [appreciations, setAppreciations] = useState<Record<string, string>>({});
+  const [appreciationsModifiees, setAppreciationsModifiees] = useState<Record<string, boolean>>({});
   const [enCours, setEnCours] = useState(false);
 
   const charger = useCallback(async () => {
@@ -59,6 +62,12 @@ export function BulletinDetailPage() {
         appreciation: donnees.bulletin.appreciation ?? '',
       });
       setChampsModifies({ mention: false, appreciation: false });
+      setAppreciations(
+        Object.fromEntries(
+          donnees.snapshot.matieres.map((matiere) => [matiere.subjectId, matiere.appreciation ?? ''])
+        )
+      );
+      setAppreciationsModifiees({});
       setErreur(null);
     } catch (e) {
       setDetail(null);
@@ -72,9 +81,22 @@ export function BulletinDetailPage() {
     if (id) void charger();
   }, [id, charger]);
 
+  const matieresModifiees = Object.entries(appreciationsModifiees)
+    .filter(([, modifiee]) => modifiee)
+    .map(([subjectId]) => ({
+      subjectId,
+      appreciation: (appreciations[subjectId] ?? '').trim() || null,
+    }));
+
   const publierChampsLibres = async () => {
     if (!detail) return;
-    if (!champsModifies.mention && !champsModifies.appreciation) return;
+    if (
+      !champsModifies.mention &&
+      !champsModifies.appreciation &&
+      matieresModifiees.length === 0
+    ) {
+      return;
+    }
     setEnCours(true);
     try {
       await modifierChampsLibres(id, {
@@ -82,8 +104,26 @@ export function BulletinDetailPage() {
         ...(champsModifies.appreciation
           ? { appreciation: champs.appreciation.trim() || null }
           : {}),
+        ...(matieresModifiees.length > 0
+          ? { appreciationsParMatiere: matieresModifiees }
+          : {}),
       });
       setMessage('Champs libres enregistrés.');
+      await charger();
+    } catch (e) {
+      setMessage(null);
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const regenerer = async () => {
+    if (!detail) return;
+    setEnCours(true);
+    try {
+      await regenererAppreciations(id);
+      setMessage('Appréciations régénérées automatiquement.');
       await charger();
     } catch (e) {
       setMessage(null);
@@ -220,6 +260,7 @@ export function BulletinDetailPage() {
               <th className="p-3 text-right">Moyenne</th>
               <th className="p-3 text-right">Points</th>
               <th className="p-3 text-right">Rang</th>
+              <th className="p-3 text-left">Appréciation</th>
               <th className="p-3 text-left">Évaluations retenues</th>
             </tr>
           </thead>
@@ -264,6 +305,40 @@ export function BulletinDetailPage() {
                   {matiere.pointsPonderes ?? '—'}
                 </td>
                 <td className="p-3 text-right">{matiere.rang ?? '—'}</td>
+                <td className="min-w-48 whitespace-normal p-3">
+                  {modifiable ? (
+                    <>
+                      <textarea
+                        aria-label={`Appréciation de ${matiere.subjectName}`}
+                        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+                        rows={2}
+                        maxLength={300}
+                        value={appreciations[matiere.subjectId] ?? ''}
+                        onChange={(event) => {
+                          const valeur = event.target.value;
+                          setAppreciations((etat) => ({ ...etat, [matiere.subjectId]: valeur }));
+                          setAppreciationsModifiees((etat) => ({
+                            ...etat,
+                            [matiere.subjectId]: true,
+                          }));
+                        }}
+                      />
+                      <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {appreciationsModifiees[matiere.subjectId] ||
+                        matiere.appreciationAuto === false
+                          ? 'Modifiée'
+                          : 'Auto'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <p>{matiere.appreciation ?? '—'}</p>
+                      <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {matiere.appreciationAuto === false ? 'Modifiée' : 'Auto'}
+                      </span>
+                    </>
+                  )}
+                </td>
                 <td className="min-w-52 whitespace-normal p-3">
                   {matiere.groupes.length === 0 ? (
                     <span className="text-muted-foreground">Aucune évaluation retenue</span>
@@ -308,6 +383,7 @@ export function BulletinDetailPage() {
               </td>
               <td />
               <td className="p-3 text-right">{snapshot.synthese.rang ?? '—'}</td>
+              <td />
               <td className="p-3 text-xs text-muted-foreground">
                 Moyenne de classe :{' '}
                 {snapshot.synthese.moyenneClasseAffichee ?? snapshot.synthese.moyenneClasse ?? '—'}
@@ -383,13 +459,35 @@ export function BulletinDetailPage() {
                   }}
                 />
               </label>
-              <Button
-                size="sm"
-                onClick={() => void publierChampsLibres()}
-                disabled={enCours || (!champsModifies.mention && !champsModifies.appreciation)}
-              >
-                Enregistrer les champs libres
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => void publierChampsLibres()}
+                  disabled={
+                    enCours ||
+                    (!champsModifies.mention &&
+                      !champsModifies.appreciation &&
+                      matieresModifiees.length === 0)
+                  }
+                >
+                  Enregistrer les champs libres
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void regenerer()}
+                  disabled={enCours}
+                >
+                  Régénérer les appréciations
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                « Régénérer » remplace toutes les appréciations, y compris celles modifiées à la
+                main, par les propositions automatiques recalculées.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Décision du conseil (annuelle) : {bulletin.decisionConseil ?? 'non renseignée'}.
+              </p>
             </>
           ) : (
             <dl className="space-y-2 text-sm">
@@ -400,6 +498,10 @@ export function BulletinDetailPage() {
               <div>
                 <dt className="text-xs text-muted-foreground">Appréciation</dt>
                 <dd>{bulletin.appreciation ?? 'Non renseigné'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Décision du conseil</dt>
+                <dd>{bulletin.decisionConseil ?? 'Non renseigné'}</dd>
               </div>
             </dl>
           )}

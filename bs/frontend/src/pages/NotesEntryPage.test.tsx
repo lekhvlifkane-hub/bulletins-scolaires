@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotesEntryPage } from '@/pages/NotesEntryPage';
 
 /**
- * Tests d'écran avec le backend simulé : on vérifie que la page n'envoie que les
- * lignes modifiées, qu'elle n'affiche que ce que le serveur renvoie (indicateur,
- * erreurs par ligne) et qu'elle ne calcule rien elle-même.
+ * Tests d'écran avec le backend simulé : la feuille consolidée n'envoie que les
+ * cellules modifiées, affiche les moyennes/appréciations servies par le serveur et
+ * laisse les colonnes verrouillées en lecture seule.
  */
 
 const CLASSE = {
@@ -50,33 +50,33 @@ const AFFECTATIONS = {
 };
 
 const EVALUATIONS = {
-  assessments: [
-    {
-      id: 'ev-1',
-      title: 'Devoir 1',
-      position: 1,
-      status: 'SAISIE_EN_COURS',
-      outOf: '20',
-      date: null,
-      validatedAt: null,
-      publishedAt: null,
-      classroomId: 'cls-1',
-      classroomName: 'Terminale S1',
-      subjectId: 'sub-1',
-      subjectName: 'Mathématiques',
-      semesterId: 'sem-1',
-      semesterName: 'Semestre 1',
-      typeId: 'ty-1',
-      typeName: 'Devoir',
-      category: 'DEVOIR',
-      notesSaisies: 0,
-    },
-  ],
+  assessments: [],
 };
 
-function grille(score0: string | null = null) {
+function feuille(options: { score0?: string | null; saisieAutorisee?: boolean; statut?: string } = {}) {
+  const score0 = options.score0 ?? null;
+  const saisieAutorisee = options.saisieAutorisee ?? true;
+  const statut = options.statut ?? 'SAISIE_EN_COURS';
   return {
-    assessment: { id: 'ev-1', title: 'Devoir 1', status: 'SAISIE_EN_COURS', outOf: '20', saisieAutorisee: true },
+    classroomSubject: {
+      id: 'cs-1',
+      coefficient: '3',
+      subject: { id: 'sub-1', name: 'Mathématiques', code: 'MATH' },
+      classroom: { id: 'cls-1', name: 'Terminale S1' },
+    },
+    semester: { id: 'sem-1', number: 1, name: 'Semestre 1', academicYearId: 'an-1' },
+    colonnes: [
+      {
+        id: 'ev-1',
+        title: 'Devoir 1',
+        position: 1,
+        category: 'DEVOIR',
+        typeName: 'Devoir',
+        outOf: '20',
+        status: statut,
+        saisieAutorisee,
+      },
+    ],
     lignes: [
       {
         enrollmentId: 'enc-1',
@@ -84,10 +84,20 @@ function grille(score0: string | null = null) {
         matricule: 'MAT1',
         nom: 'Alpha',
         prenoms: 'Ndiaye',
-        gradeId: null,
-        score: score0,
-        status: score0 === null ? 'NON_SAISIE' : 'SAISIE',
-        observation: null,
+        notes: [
+          {
+            assessmentId: 'ev-1',
+            gradeId: score0 === null ? null : 'grade-1',
+            score: score0,
+            status: score0 === null ? 'NON_SAISIE' : 'SAISIE',
+            observation: null,
+          },
+        ],
+        moyenne: score0 === null ? null : '12.50',
+        moyenneExacte: score0 === null ? null : '12.5',
+        appreciation: score0 === null ? null : 'Assez bien',
+        incomplet: score0 === null,
+        motifs: score0 === null ? ['Aucune moyenne : aucune note saisie'] : [],
       },
       {
         enrollmentId: 'enc-2',
@@ -95,10 +105,20 @@ function grille(score0: string | null = null) {
         matricule: 'MAT2',
         nom: 'Beta',
         prenoms: 'Diallo',
-        gradeId: null,
-        score: null,
-        status: 'NON_SAISIE',
-        observation: null,
+        notes: [
+          {
+            assessmentId: 'ev-1',
+            gradeId: null,
+            score: null,
+            status: 'NON_SAISIE',
+            observation: null,
+          },
+        ],
+        moyenne: null,
+        moyenneExacte: null,
+        appreciation: null,
+        incomplet: true,
+        motifs: [],
       },
     ],
   };
@@ -129,7 +149,17 @@ function installerBackend(reponses: Partial<Record<string, unknown>>, statutPut 
         ok: true,
         status: 200,
         headers: new Headers(),
-        json: async () => reponses['/api/grades'] ?? { enregistrees: 1, indicateur: '1 note(s) enregistrée(s)' },
+        json: async () =>
+          reponses['/api/grades'] ?? { enregistrees: 1, indicateur: '1 note(s) enregistrée(s)' },
+      };
+    }
+
+    if (method === 'POST' && url === '/api/assessments') {
+      return {
+        ok: true,
+        status: 201,
+        headers: new Headers(),
+        json: async () => ({ assessment: { id: 'ev-2', title: 'Composition 1' } }),
       };
     }
 
@@ -144,8 +174,8 @@ function installerBackend(reponses: Partial<Record<string, unknown>>, statutPut 
               ? '/api/assessment-types'
               : url.startsWith('/api/assessments')
                 ? '/api/assessments'
-                : url.startsWith('/api/grade-grid')
-                  ? '/api/grade-grid'
+                : url.startsWith('/api/grade-sheet')
+                  ? '/api/grade-sheet'
                   : url;
     const corps = reponses[cle] ?? {};
     return { ok: true, status: 200, headers: new Headers(), json: async () => corps };
@@ -163,14 +193,14 @@ function backendParDefaut(put?: unknown, statutPut = 200) {
       '/api/schooling/classroom-subjects': AFFECTATIONS,
       '/api/assessment-types': TYPES,
       '/api/assessments': EVALUATIONS,
-      '/api/grade-grid': grille(),
+      '/api/grade-sheet': feuille(),
       '/api/grades': put,
     },
     statutPut
   );
 }
 
-describe('NotesEntryPage — saisie rapide', () => {
+describe('NotesEntryPage — feuille consolidée', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -179,13 +209,15 @@ describe('NotesEntryPage — saisie rapide', () => {
     vi.unstubAllGlobals();
   });
 
-  it('charge la grille à partir des sélections', async () => {
+  it('charge la feuille consolidée à partir des sélections', async () => {
     backendParDefaut();
     render(<NotesEntryPage />);
 
     expect(await screen.findByText('Devoir 1')).toBeInTheDocument();
-    expect(screen.getByText('Note / 20')).toBeInTheDocument();
-    expect(screen.getByLabelText('Note de Alpha Ndiaye')).toBeInTheDocument();
+    expect(screen.getByText('Élève')).toBeInTheDocument();
+    expect(screen.getByText('Moy.')).toBeInTheDocument();
+    expect(screen.getByText('Appréciation')).toBeInTheDocument();
+    expect(screen.getByLabelText('Note de Alpha Ndiaye — Devoir 1')).toBeInTheDocument();
   });
 
   it('le bouton Enregistrer reste inactif tant que rien n’est modifié', async () => {
@@ -194,17 +226,20 @@ describe('NotesEntryPage — saisie rapide', () => {
 
     const bouton = await screen.findByRole('button', { name: 'Enregistrer' });
     expect(bouton).toBeDisabled();
-    expect(screen.getByText('Toutes les lignes sont enregistrées')).toBeInTheDocument();
+    expect(screen.getByText('Toutes les notes sont enregistrées')).toBeInTheDocument();
   });
 
-  it('n’envoie que les lignes modifiées, puis affiche l’indicateur serveur', async () => {
-    const { putCorps } = backendParDefaut({ enregistrees: 1, indicateur: '1 note(s) enregistrée(s)' });
+  it('n’envoie que les cellules modifiées, puis affiche l’indicateur serveur', async () => {
+    const { putCorps } = backendParDefaut({
+      enregistrees: 1,
+      indicateur: '1 note(s) enregistrée(s)',
+    });
     render(<NotesEntryPage />);
 
-    const note = await screen.findByLabelText('Note de Alpha Ndiaye');
+    const note = await screen.findByLabelText('Note de Alpha Ndiaye — Devoir 1');
     fireEvent.change(note, { target: { value: '12,5' } });
 
-    expect(await screen.findByText('1 ligne(s) non enregistrée(s)')).toBeInTheDocument();
+    expect(await screen.findByText('1 note(s) non enregistrée(s)')).toBeInTheDocument();
     const bouton = screen.getByRole('button', { name: 'Enregistrer' });
     expect(bouton).toBeEnabled();
     fireEvent.click(bouton);
@@ -212,18 +247,16 @@ describe('NotesEntryPage — saisie rapide', () => {
     await waitFor(() => expect(putCorps.length).toBe(1));
     expect(putCorps[0]).toEqual({
       assessmentId: 'ev-1',
-      notes: [
-        { enrollmentId: 'enc-1', score: '12,5', status: 'SAISIE', observation: null },
-      ],
+      notes: [{ enrollmentId: 'enc-1', score: '12,5', status: 'SAISIE', observation: null }],
     });
 
     expect(await screen.findByText('1 note(s) enregistrée(s)')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText('Toutes les lignes sont enregistrées')).toBeInTheDocument()
+      expect(screen.getByText('Toutes les notes sont enregistrées')).toBeInTheDocument()
     );
   });
 
-  it('montre les erreurs par ligne d’un refus 422 et rien n’est enregistré', async () => {
+  it('montre les erreurs par cellule d’un refus 422 et rien n’est enregistré', async () => {
     const refus = {
       error: 'Saisie refusée',
       details: { erreurs: [{ enrollmentId: 'enc-1', message: 'Note hors barème (max 20)' }] },
@@ -231,18 +264,16 @@ describe('NotesEntryPage — saisie rapide', () => {
     const { putCorps } = backendParDefaut(refus, 422);
     render(<NotesEntryPage />);
 
-    const note = await screen.findByLabelText('Note de Alpha Ndiaye');
+    const note = await screen.findByLabelText('Note de Alpha Ndiaye — Devoir 1');
     fireEvent.change(note, { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
 
     await waitFor(() => expect(putCorps.length).toBe(1));
     expect(await screen.findByText('Note hors barème (max 20)')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Rien n'a été enregistré\./)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Rien n'a été enregistré/)).toBeInTheDocument();
   });
 
-  it('une réévaluation efface l’erreur affichée de la ligne', async () => {
+  it('une réévaluation efface l’erreur affichée de la cellule', async () => {
     const refus = {
       error: 'Saisie refusée',
       details: { erreurs: [{ enrollmentId: 'enc-1', message: 'Note hors barème (max 20)' }] },
@@ -250,7 +281,7 @@ describe('NotesEntryPage — saisie rapide', () => {
     backendParDefaut(refus, 422);
     render(<NotesEntryPage />);
 
-    const note = await screen.findByLabelText('Note de Alpha Ndiaye');
+    const note = await screen.findByLabelText('Note de Alpha Ndiaye — Devoir 1');
     fireEvent.change(note, { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
     expect(await screen.findByText('Note hors barème (max 20)')).toBeInTheDocument();
@@ -261,23 +292,20 @@ describe('NotesEntryPage — saisie rapide', () => {
     );
   });
 
-  it('signale une saisie fermée et bloque l’enregistrement', async () => {
+  it('laisse les évaluations validées visibles mais verrouillées', async () => {
     installerBackend({
       '/api/schooling/classes': { classes: [CLASSE] },
       '/api/schooling/years': ANNEES,
       '/api/schooling/classroom-subjects': AFFECTATIONS,
       '/api/assessment-types': TYPES,
       '/api/assessments': EVALUATIONS,
-      '/api/grade-grid': {
-        assessment: { id: 'ev-1', title: 'Devoir 1', status: 'VALIDEE', outOf: '20', saisieAutorisee: false },
-        lignes: grille().lignes,
-      },
+      '/api/grade-sheet': feuille({ saisieAutorisee: false, statut: 'VALIDEE' }),
     });
     render(<NotesEntryPage />);
 
-    expect(await screen.findByText(/Saisie fermée/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
-    expect(screen.getByLabelText('Note de Alpha Ndiaye')).toBeDisabled();
+    expect(await screen.findByText(/Les évaluations non validées/)).toBeInTheDocument();
+    expect(screen.getByText(/1 verrouillée\(s\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Note de Alpha Ndiaye — Devoir 1')).toBeDisabled();
   });
 
   it('crée une évaluation avec le type choisi, sans inventer de barème', async () => {
@@ -287,11 +315,11 @@ describe('NotesEntryPage — saisie rapide', () => {
       '/api/schooling/classroom-subjects': AFFECTATIONS,
       '/api/assessment-types': TYPES,
       '/api/assessments': EVALUATIONS,
-      '/api/grade-grid': grille(),
+      '/api/grade-sheet': feuille(),
     });
     render(<NotesEntryPage />);
 
-    await screen.findByLabelText('Note de Alpha Ndiaye');
+    await screen.findByLabelText('Note de Alpha Ndiaye — Devoir 1');
     fireEvent.change(screen.getByPlaceholderText('Titre (ex. Devoir 1)'), {
       target: { value: 'Composition 1' },
     });

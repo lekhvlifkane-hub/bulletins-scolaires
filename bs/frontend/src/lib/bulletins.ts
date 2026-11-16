@@ -350,6 +350,7 @@ export interface SnapshotBilanAnnuel {
 export interface ChampsLibres {
   mention?: string | null;
   appreciation?: string | null;
+  appreciationsParMatiere?: { subjectId: string; appreciation: string | null }[];
 }
 
 async function demander<T>(url: string, init?: RequestInit): Promise<T> {
@@ -417,6 +418,13 @@ export function modifierChampsLibres(id: string, champs: ChampsLibres) {
     method: 'PATCH',
     body: JSON.stringify(champs),
   });
+}
+
+export function regenererAppreciations(id: string) {
+  return demander<{ bulletin: BulletinResume }>(
+    `/api/report-cards/${encodeURIComponent(id)}/appreciations/regenerate`,
+    { method: 'POST' }
+  );
 }
 
 export function modifierChampsBilanAnnuel(id: string, champs: ChampsLibres) {

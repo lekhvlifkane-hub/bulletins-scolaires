@@ -261,6 +261,43 @@ describe('Phase 5 — API des bulletins', () => {
     expect(matiereInconnue.status).toBe(400);
   });
 
+  it('préserve une appréciation manuelle au recalcul, puis la régénère sur demande', async () => {
+    const bulletin = await generer();
+    const subjectId = (await agent.get(`/api/report-cards/${bulletin.id}`)).body.snapshot.matieres[0]
+      .subjectId as string;
+
+    await agent
+      .patch(`/api/report-cards/${bulletin.id}`)
+      .set('x-csrf-token', await csrf(agent))
+      .send({ appreciationsParMatiere: [{ subjectId, appreciation: 'Appréciation manuelle.' }] });
+
+    await generer();
+    const apresRecalcul = await agent.get(`/api/report-cards/${bulletin.id}`);
+    const manuelle = apresRecalcul.body.snapshot.matieres.find(
+      (matiere: { subjectId: string }) => matiere.subjectId === subjectId
+    );
+    expect(manuelle.appreciation).toBe('Appréciation manuelle.');
+    expect(manuelle.appreciationAuto).toBe(false);
+
+    const regeneration = await agent
+      .post(`/api/report-cards/${bulletin.id}/appreciations/regenerate`)
+      .set('x-csrf-token', await csrf(agent));
+    expect(regeneration.status).toBe(200);
+    expect(regeneration.body.bulletin.statut).toBe('BOUILLON');
+
+    const regeneree = await agent.get(`/api/report-cards/${bulletin.id}`);
+    const auto = regeneree.body.snapshot.matieres.find(
+      (matiere: { subjectId: string }) => matiere.subjectId === subjectId
+    );
+    expect(auto.appreciation).not.toBe('Appréciation manuelle.');
+    expect(auto.appreciationAuto).toBe(true);
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { schoolId: ctx.schoolId, action: 'REPORT_CARD_APPRECIATIONS_REGENERATED' },
+    });
+    expect(audit?.entityId).toBe(bulletin.id);
+  });
+
   it('compare les deux semestres à partir des snapshots, écarts calculés serveur', async () => {
     await generer(ctx.eleves[0].enrollmentId, ctx.semestre1Id);
     await generer(ctx.eleves[0].enrollmentId, ctx.semestre2Id);

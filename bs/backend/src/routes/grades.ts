@@ -9,6 +9,7 @@ import { writeAuditLog } from '../services/audit';
 import { calculerBilanAnnuel, calculerResultatsClasse } from '../services/calcul/resultats';
 import { formaterNote } from '../services/calcul';
 import { parametresEtablissement } from '../services/calcul/etablissement';
+import { appreciationMatiere, chargerReglesAppreciation } from '../services/appreciations';
 
 const router = Router();
 
@@ -450,6 +451,157 @@ router.delete('/assessments/:id', requireCsrf, asyncHandler(async (req, res) => 
     entityId: assessment.id,
   });
   res.status(204).end();
+}));
+
+/**
+ * @openapi
+ * /api/grade-sheet:
+ *   get:
+ *     summary: Feuille de notes consolidée d'une discipline pour un semestre
+ *     tags: [Notes et calculs]
+ *     description: >
+ *       Une ligne par élève actif, une colonne par évaluation. Les évaluations non
+ *       validées sont incluses dans la moyenne prévisualisée (inclureBrouillons).
+ *     parameters:
+ *       - in: query
+ *         name: classroomSubjectId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: semesterId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Colonnes, notes, moyenne de matière et appréciation automatique }
+ *       400: { description: Paramètres manquants ou semestre hors de l'année de la classe }
+ *       404: { description: Discipline ou semestre hors de l'établissement }
+ */
+const ORDRE_CATEGORIE: Record<string, number> = { DEVOIR: 0, COMPOSITION: 1, AUTRE: 2 };
+
+router.get('/grade-sheet', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const classroomSubjectId = typeof req.query.classroomSubjectId === 'string' ? req.query.classroomSubjectId : '';
+  const semesterId = typeof req.query.semesterId === 'string' ? req.query.semesterId : '';
+  if (!classroomSubjectId) throw new HttpError(400, 'Paramètre classroomSubjectId requis');
+  if (!semesterId) throw new HttpError(400, 'Paramètre semesterId requis');
+
+  const [classroomSubject, semester, school] = await Promise.all([
+    prisma.classroomSubject.findFirst({
+      where: { id: classroomSubjectId, schoolId },
+      include: { subject: true, classroom: true },
+    }),
+    prisma.semester.findFirst({
+      where: { id: semesterId, academicYear: { schoolId, deletedAt: null } },
+      include: { academicYear: true },
+    }),
+    prisma.school.findFirst({ where: { id: schoolId, deletedAt: null } }),
+  ]);
+  if (!classroomSubject) throw new HttpError(404, 'Discipline de classe introuvable');
+  if (!semester) throw new HttpError(404, 'Semestre introuvable pour cet établissement');
+  if (classroomSubject.classroom.academicYearId !== semester.academicYearId) {
+    throw new HttpError(400, "Le semestre n'appartient pas à l'année scolaire de la classe");
+  }
+  if (!school) throw new HttpError(404, 'Établissement introuvable');
+
+  const params = parametresEtablissement(school);
+  const [assessments, rules, effectif] = await Promise.all([
+    prisma.assessment.findMany({
+      where: { schoolId, classroomSubjectId, semesterId, deletedAt: null },
+      include: { type: true },
+    }),
+    chargerReglesAppreciation(schoolId),
+    prisma.enrollment.count({
+      where: {
+        schoolId,
+        classroomId: classroomSubject.classroomId,
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+    }),
+  ]);
+
+  const colonnes = assessments
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      position: a.position,
+      category: a.type.category,
+      typeName: a.type.name,
+      outOf: estDecimalPrisma(a.outOf),
+      status: a.status,
+      saisieAutorisee: SAISIE_AUTORISEE.includes(a.status),
+    }))
+    .sort(
+      (a, b) =>
+        (ORDRE_CATEGORIE[a.category] ?? 99) - (ORDRE_CATEGORIE[b.category] ?? 99) ||
+        a.position - b.position
+    );
+
+  let eleves: Awaited<ReturnType<typeof calculerResultatsClasse>>['eleves'] = [];
+  if (effectif > 0) {
+    const resultats = await calculerResultatsClasse({
+      schoolId,
+      classroomId: classroomSubject.classroomId,
+      semesterId,
+      inclureBrouillons: true,
+    });
+    eleves = resultats.eleves;
+  }
+
+  const grades = colonnes.length === 0
+    ? []
+    : await prisma.grade.findMany({
+        where: { schoolId, assessmentId: { in: colonnes.map((c) => c.id) }, deletedAt: null },
+      });
+  const noteParCle = new Map(grades.map((g) => [`${g.assessmentId}:${g.enrollmentId}`, g]));
+
+  res.json({
+    classroomSubject: {
+      id: classroomSubject.id,
+      coefficient: estDecimalPrisma(classroomSubject.coefficient),
+      subject: {
+        id: classroomSubject.subject.id,
+        name: classroomSubject.subject.name,
+        code: classroomSubject.subject.code,
+      },
+      classroom: {
+        id: classroomSubject.classroom.id,
+        name: classroomSubject.classroom.name,
+      },
+    },
+    semester: {
+      id: semester.id,
+      number: semester.number,
+      name: semester.name,
+      academicYearId: semester.academicYearId,
+    },
+    colonnes,
+    lignes: eleves.map((eleve) => {
+      const matiere = eleve.matieres.find((m) => m.subjectId === classroomSubject.subjectId);
+      return {
+        enrollmentId: eleve.enrollmentId,
+        studentId: eleve.studentId,
+        matricule: eleve.matricule,
+        nom: eleve.nom,
+        prenoms: eleve.prenoms,
+        notes: colonnes.map((colonne) => {
+          const grade = noteParCle.get(`${colonne.id}:${eleve.enrollmentId}`);
+          return {
+            assessmentId: colonne.id,
+            gradeId: grade?.id ?? null,
+            score: grade ? estDecimalPrisma(grade.score) : null,
+            status: grade?.status ?? 'NON_SAISIE',
+            observation: grade?.observation ?? null,
+          };
+        }),
+        moyenne: formaterNote(matiere?.moyenne ?? null, params.decimalsAffichage, params.arrondi),
+        moyenneExacte: matiere?.moyenne?.toString() ?? null,
+        appreciation: appreciationMatiere(rules.matiere, matiere?.moyenne ?? null),
+        incomplet: matiere?.incomplet ?? true,
+        motifs: matiere?.motifs ?? [],
+      };
+    }),
+  });
 }));
 
 /**

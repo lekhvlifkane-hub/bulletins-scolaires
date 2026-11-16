@@ -16,6 +16,7 @@ import {
   lireSnapshot,
   modifierChampsLibres,
   publierBulletins,
+  regenererAppreciationsBulletin,
 } from '../services/bulletins/bulletin';
 import { genererBilanAnnuel, publierBilansAnnuels } from '../services/bulletins/annual';
 import { comparerSemestres } from '../services/bulletins/comparaison';
@@ -146,7 +147,7 @@ function resumeBulletin(card: ReportCard) {
     absences: snapshot.absences ?? null,
     mention: card.mention,
     mentionAuto: card.mentionAuto,
-    decisionConseil: null,
+    decisionConseil: card.decisionConseil,
     decisionProposee: snapshot.decisionProposee ?? null,
     decisionAuto: card.decisionAuto,
     appreciation: card.appreciation,
@@ -221,6 +222,7 @@ function textesDe(card: ReportCard, snapshot: ReturnType<typeof lireSnapshot>): 
   return {
     mention: card.mention,
     appreciation: card.appreciation,
+    decisionConseil: card.decisionConseil,
     decisionProposee: snapshot.decisionProposee ?? null,
   };
 }
@@ -668,6 +670,34 @@ router.patch('/report-cards/:id', requireCsrf, asyncHandler(async (req, res) => 
           })),
         }
       : {}),
+  });
+  res.json({ bulletin: resumeBulletin(maj) });
+}));
+
+/**
+ * @openapi
+ * /api/report-cards/{id}/appreciations/regenerate:
+ *   post:
+ *     summary: Régénérer toutes les appréciations d'un bulletin (y compris les textes modifiés)
+ *     tags: [Bulletins]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Bulletin régénéré, appréciations repassées en automatique }
+ *       409: { description: Bulletin publié, correction versionnée nécessaire }
+ */
+router.post('/report-cards/:id/appreciations/regenerate', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  await assertDroitsBulletin(req);
+  const card = await chargerBulletin(schoolId, req.params.id);
+  const maj = await regenererAppreciationsBulletin({
+    schoolId,
+    reportCardId: card.id,
+    userId: req.currentUser!.id,
+    req,
   });
   res.json({ bulletin: resumeBulletin(maj) });
 }));

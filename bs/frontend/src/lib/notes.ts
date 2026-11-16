@@ -38,6 +38,51 @@ export interface GrilleSaisie {
   lignes: LigneNote[];
 }
 
+export interface ColonneFeuille {
+  id: string;
+  title: string;
+  position: number;
+  category: CategorieEvaluation;
+  typeName: string;
+  outOf: string;
+  status: StatutEvaluation;
+  saisieAutorisee: boolean;
+}
+
+export interface CelluleFeuille {
+  assessmentId: string;
+  gradeId: string | null;
+  score: string | null;
+  status: StatutNote;
+  observation: string | null;
+}
+
+export interface LigneFeuille {
+  enrollmentId: string;
+  studentId: string;
+  matricule: string;
+  nom: string;
+  prenoms: string;
+  notes: CelluleFeuille[];
+  moyenne: string | null;
+  moyenneExacte: string | null;
+  appreciation: string | null;
+  incomplet: boolean;
+  motifs: string[];
+}
+
+export interface FeuilleSaisie {
+  classroomSubject: {
+    id: string;
+    coefficient: string | null;
+    subject: { id: string; name: string; code: string };
+    classroom: { id: string; name: string };
+  };
+  semester: { id: string; number: number; name: string; academicYearId: string };
+  colonnes: ColonneFeuille[];
+  lignes: LigneFeuille[];
+}
+
 export interface Evaluation {
   id: string;
   title: string;
@@ -224,6 +269,14 @@ export function creerEvaluation(payload: {
 
 export function chargerGrille(assessmentId: string) {
   return demander<GrilleSaisie>(`/api/grade-grid?assessmentId=${encodeURIComponent(assessmentId)}`);
+}
+
+export function chargerFeuille(options: { classroomSubjectId: string; semesterId: string }) {
+  const params = new URLSearchParams({
+    classroomSubjectId: options.classroomSubjectId,
+    semesterId: options.semesterId,
+  });
+  return demander<FeuilleSaisie>(`/api/grade-sheet?${params.toString()}`);
 }
 
 export function enregistrerNotes(

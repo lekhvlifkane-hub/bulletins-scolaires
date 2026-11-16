@@ -488,6 +488,67 @@ describe('Phase 4 — workflow brouillon -> valide -> publie', () => {
     expect(retour.status).toBe(409);
   });
 
+  it('sert une feuille consolidée avec brouillons inclus, moyennes et appréciations', async () => {
+    await evalValidee(ctx, {
+      classroomSubjectId: ctx.mathsCsf,
+      semesterId: ctx.semestre1Id,
+      typeId: ctx.devoirTypeId,
+      title: 'Devoir 1',
+      position: 1,
+      status: 'SAISIE_EN_COURS',
+      notes: [
+        { enrollmentId: ctx.eleves[0].enrollmentId, score: 12 },
+        { enrollmentId: ctx.eleves[1].enrollmentId, score: null, status: 'ABSENT' },
+      ],
+    });
+    await evalValidee(ctx, {
+      classroomSubjectId: ctx.mathsCsf,
+      semesterId: ctx.semestre1Id,
+      typeId: ctx.compositionTypeId,
+      title: 'Composition 1',
+      position: 1,
+      status: 'VALIDEE',
+      notes: [
+        { enrollmentId: ctx.eleves[0].enrollmentId, score: 18 },
+        { enrollmentId: ctx.eleves[1].enrollmentId, score: 10 },
+      ],
+    });
+
+    const res = await admin.get('/api/grade-sheet').query({
+      classroomSubjectId: ctx.mathsCsf,
+      semesterId: ctx.semestre1Id,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.classroomSubject.subject.name).toBe('Mathématiques');
+    expect(res.body.colonnes.map((c: { title: string }) => c.title)).toEqual([
+      'Devoir 1',
+      'Composition 1',
+    ]);
+    expect(res.body.colonnes.map((c: { status: string }) => c.status)).toEqual([
+      'SAISIE_EN_COURS',
+      'VALIDEE',
+    ]);
+    expect(res.body.colonnes.map((c: { saisieAutorisee: boolean }) => c.saisieAutorisee)).toEqual([
+      true,
+      false,
+    ]);
+
+    const alpha = res.body.lignes.find(
+      (l: { enrollmentId: string }) => l.enrollmentId === ctx.eleves[0].enrollmentId
+    );
+    expect(alpha.notes.map((n: { score: string | null }) => n.score)).toEqual(['12', '18']);
+    expect(alpha.moyenne).toBe('15.00');
+    expect(alpha.incomplet).toBe(false);
+    expect(alpha.appreciation).toBeTruthy();
+
+    const beta = res.body.lignes.find(
+      (l: { enrollmentId: string }) => l.enrollmentId === ctx.eleves[1].enrollmentId
+    );
+    expect(beta.notes.map((n: { status: string }) => n.status)).toEqual(['ABSENT', 'SAISIE']);
+    expect(beta.moyenne).toBe('10.00');
+  });
+
   it('trace les transitions et les saisies dans les journaux d\'audit', async () => {
     const id = await creerEvaluation(admin);
     await admin

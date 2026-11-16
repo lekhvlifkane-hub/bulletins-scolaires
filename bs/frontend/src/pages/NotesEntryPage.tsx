@@ -2,22 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { NotesGrid } from '@/components/NotesGrid';
+import { NotesSheet, cleCellule } from '@/components/NotesSheet';
 import {
   ErreurSaisie,
-  LIBELLES_STATUT_EVALUATION,
   chargerAffectations,
   chargerAnnees,
   chargerClasses,
-  chargerEvaluations,
-  chargerGrille,
+  chargerFeuille,
   chargerTypes,
   creerEvaluation,
   enregistrerNotes,
   type Affectation,
+  type CelluleFeuille,
   type Classe,
-  type Evaluation,
-  type LigneNote,
+  type FeuilleSaisie,
+  type LigneFeuille,
   type TypeEvaluation,
   type YearSemestre,
 } from '@/lib/notes';
@@ -30,13 +29,11 @@ export function NotesEntryPage() {
   const [classroomId, setClassroomId] = useState('');
   const [semesterId, setSemesterId] = useState('');
   const [affectationId, setAffectationId] = useState('');
-  const [assessmentId, setAssessmentId] = useState('');
 
   const [affectations, setAffectations] = useState<Affectation[]>([]);
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
-  const [grille, setGrille] = useState<{ lignes: LigneNote[]; bareme: string; saisieAutorisee: boolean; statut: string; titre: string } | null>(null);
+  const [feuille, setFeuille] = useState<FeuilleSaisie | null>(null);
 
-  const [modifiees, setModifiees] = useState<Record<string, LigneNote>>({});
+  const [modifiees, setModifiees] = useState<Record<string, CelluleFeuille>>({});
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
@@ -85,114 +82,143 @@ export function NotesEntryPage() {
     }
   }, [semestres, semesterId]);
 
-  const rechargerEvaluations = useCallback(async () => {
+  const rechargerFeuille = useCallback(async () => {
     if (!affectationId || !semesterId) {
-      setEvaluations([]);
-      setAssessmentId('');
+      setFeuille(null);
       return;
     }
-    const reponse = await chargerEvaluations({ classroomSubjectId: affectationId, semesterId });
-    setEvaluations(reponse.assessments);
-    setAssessmentId((actuel) =>
-      reponse.assessments.some((e) => e.id === actuel)
-        ? actuel
-        : reponse.assessments[0]?.id ?? ''
-    );
+    const reponse = await chargerFeuille({
+      classroomSubjectId: affectationId,
+      semesterId,
+    });
+    setFeuille(reponse);
   }, [affectationId, semesterId]);
 
   useEffect(() => {
-    rechargerEvaluations().catch((erreur) => setErreurGlobale((erreur as Error).message));
-  }, [rechargerEvaluations]);
-
-  useEffect(() => {
-    if (!assessmentId) {
-      setGrille(null);
-      return;
-    }
     setModifiees({});
     setErreurs({});
     setMessage(null);
-    (async () => {
-      const reponse = await chargerGrille(assessmentId);
-      setGrille({
-        lignes: reponse.lignes,
-        bareme: reponse.assessment.outOf,
-        saisieAutorisee: reponse.assessment.saisieAutorisee,
-        statut: reponse.assessment.status,
-        titre: reponse.assessment.title,
-      });
-    })().catch((erreur) => setErreurGlobale((erreur as Error).message));
-  }, [assessmentId]);
+    rechargerFeuille().catch((erreur) => setErreurGlobale((erreur as Error).message));
+  }, [rechargerFeuille]);
 
-  const lignesAffichees = grille
-    ? grille.lignes.map((ligne) => modifiees[ligne.enrollmentId] ?? ligne)
+  const lignesAffichees: LigneFeuille[] = feuille
+    ? feuille.lignes.map((ligne) => ({
+        ...ligne,
+        notes: ligne.notes.map(
+          (note) => modifiees[cleCellule(note.assessmentId, ligne.enrollmentId)] ?? note
+        ),
+      }))
     : [];
 
   const nbModifiees = Object.keys(modifiees).length;
+  const colonnesVerrouillees = feuille?.colonnes.filter((c) => !c.saisieAutorisee).length ?? 0;
+  const colonnesNonValidees =
+    feuille?.colonnes.filter((c) => c.status !== 'VALIDEE' && c.status !== 'PUBLIEE').length ?? 0;
 
-  const surChangementLigne = (enrollmentId: string, patch: Partial<LigneNote>) => {
-    const brute = grille?.lignes.find((l) => l.enrollmentId === enrollmentId);
+  const surChangementCellule = (
+    assessmentId: string,
+    enrollmentId: string,
+    patch: Partial<CelluleFeuille>
+  ) => {
+    const ligne = feuille?.lignes.find((l) => l.enrollmentId === enrollmentId);
+    const brute = ligne?.notes.find((n) => n.assessmentId === assessmentId);
     if (!brute) return;
-    const affichee = modifiees[enrollmentId] ?? brute;
-    const suivante: LigneNote = { ...affichee, ...patch };
+    const cle = cleCellule(assessmentId, enrollmentId);
+    const suivante: CelluleFeuille = { ...(modifiees[cle] ?? brute), ...patch };
 
     setModifiees((etat) => {
       const copie = { ...etat };
       const identique =
-        suivante.score === brute.score &&
+        (suivante.score ?? '') === (brute.score ?? '') &&
         suivante.status === brute.status &&
         (suivante.observation ?? '') === (brute.observation ?? '');
-      if (identique) delete copie[enrollmentId];
-      else copie[enrollmentId] = suivante;
+      if (identique) delete copie[cle];
+      else copie[cle] = suivante;
       return copie;
     });
 
     setErreurs((etat) => {
-      if (!etat[enrollmentId]) return etat;
+      if (!etat[cle]) return etat;
       const copie = { ...etat };
-      delete copie[enrollmentId];
+      delete copie[cle];
       return copie;
     });
   };
 
   const enregistrer = async () => {
-    if (!assessmentId || nbModifiees === 0) return;
+    if (nbModifiees === 0) return;
     setEnCours(true);
     setErreurGlobale(null);
     setErreurs({});
     setMessage(null);
-    try {
-      const notes = Object.values(modifiees).map((ligne) => ({
-        enrollmentId: ligne.enrollmentId,
-        score: ligne.status === 'SAISIE' ? ligne.score || null : null,
-        status: ligne.status,
-        observation: ligne.observation || null,
-      }));
-      const reponse = await enregistrerNotes(assessmentId, notes);
-      setModifiees({});
-      setMessage(reponse.indicateur);
-      const fraiche = await chargerGrille(assessmentId);
-      setGrille((actuelle) =>
-        actuelle
-          ? {
-              ...actuelle,
-              lignes: fraiche.lignes,
-              saisieAutorisee: fraiche.assessment.saisieAutorisee,
-              statut: fraiche.assessment.status,
+
+    const groupes = new Map<
+      string,
+      { enrollmentId: string; score: string | null; status: CelluleFeuille['status']; observation: string | null }[]
+    >();
+    for (const [cle, cellule] of Object.entries(modifiees)) {
+      const enrollmentId = cle.split(':')[1] ?? '';
+      const liste = groupes.get(cellule.assessmentId) ?? [];
+      liste.push({
+        enrollmentId,
+        score: cellule.status === 'SAISIE' ? cellule.score || null : null,
+        status: cellule.status,
+        observation: cellule.observation || null,
+      });
+      groupes.set(cellule.assessmentId, liste);
+    }
+
+    const reussies: string[] = [];
+    const evaluationsReussies = new Set<string>();
+    const echecs: string[] = [];
+    for (const [assessmentId, notes] of groupes) {
+      try {
+        const reponse = await enregistrerNotes(assessmentId, notes);
+        reussies.push(reponse.indicateur);
+        evaluationsReussies.add(assessmentId);
+      } catch (erreur) {
+        if (erreur instanceof ErreurSaisie) {
+          setErreurs((etat) => {
+            const copie = { ...etat };
+            for (const une of erreur.erreurs) {
+              copie[cleCellule(assessmentId, une.enrollmentId)] = une.message;
             }
-          : actuelle
-      );
-    } catch (erreur) {
-      if (erreur instanceof ErreurSaisie) {
-        const parEleve: Record<string, string> = {};
-        for (const une of erreur.erreurs) parEleve[une.enrollmentId] = une.message;
-        setErreurs(parEleve);
-        setErreurGlobale(
-          `${erreur.message} — ${erreur.erreurs.length} ligne(s) en cause. Rien n'a été enregistré.`
-        );
-      } else {
-        setErreurGlobale((erreur as Error).message);
+            return copie;
+          });
+          echecs.push(`${erreur.message} (${erreur.erreurs.length} ligne(s) en cause)`);
+        } else {
+          echecs.push((erreur as Error).message);
+        }
       }
+    }
+
+    if (evaluationsReussies.size > 0) {
+      setModifiees((etat) => {
+        const copie = { ...etat };
+        for (const cle of Object.keys(copie)) {
+          if (evaluationsReussies.has(cle.split(':')[0])) delete copie[cle];
+        }
+        return copie;
+      });
+    }
+
+    if (echecs.length === 0) {
+      setMessage(reussies.join(' · '));
+    } else {
+      setErreurGlobale(
+        `${echecs.join(' · ')}. ${
+          reussies.length > 0
+            ? 'Les autres évaluations ont été enregistrées.'
+            : "Rien n'a été enregistré pour ces évaluations."
+        }`
+      );
+      if (reussies.length > 0) setMessage(reussies.join(' · '));
+    }
+
+    try {
+      await rechargerFeuille();
+    } catch (erreur) {
+      setErreurGlobale((erreur as Error).message);
     } finally {
       setEnCours(false);
     }
@@ -212,8 +238,7 @@ export function NotesEntryPage() {
         title: nouveauTitre,
       });
       setNouveauTitre('');
-      await rechargerEvaluations();
-      setAssessmentId(reponse.assessment.id);
+      await rechargerFeuille();
       setMessage(`Évaluation « ${reponse.assessment.title} » créée en brouillon`);
     } catch (erreur) {
       setErreurGlobale((erreur as Error).message);
@@ -225,75 +250,60 @@ export function NotesEntryPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-brand-navy">Saisie des notes</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Grille clavier, enregistrement explicite. Les moyennes ne sont jamais calculées ici.
+          Feuille consolidée par discipline. Les moyennes et appréciations sont calculées côté
+          serveur, y compris pour les évaluations non validées.
         </p>
       </header>
 
       <Card className="gap-0 border-border py-0 shadow-sm">
-        <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
-        <label className="text-sm">
-          <span className="text-muted-foreground">Classe</span>
-          <select
-            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-            value={classroomId}
-            onChange={(event) => setClassroomId(event.target.value)}
-          >
-            {classes.length === 0 ? <option value="">Aucune classe</option> : null}
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} — {c.academicYear.name} ({c._count.enrollments} élèves)
-              </option>
-            ))}
-          </select>
-        </label>
+        <CardContent className="grid gap-4 p-4 md:grid-cols-3">
+          <label className="text-sm">
+            <span className="text-muted-foreground">Classe</span>
+            <select
+              className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+              value={classroomId}
+              onChange={(event) => setClassroomId(event.target.value)}
+            >
+              {classes.length === 0 ? <option value="">Aucune classe</option> : null}
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.academicYear.name} ({c._count.enrollments} élèves)
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label className="text-sm">
-          <span className="text-muted-foreground">Semestre</span>
-          <select
-            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-            value={semesterId}
-            onChange={(event) => setSemesterId(event.target.value)}
-          >
-            {semestres.length === 0 ? <option value="">Aucun semestre</option> : null}
-            {semestres.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label className="text-sm">
+            <span className="text-muted-foreground">Semestre</span>
+            <select
+              className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+              value={semesterId}
+              onChange={(event) => setSemesterId(event.target.value)}
+            >
+              {semestres.length === 0 ? <option value="">Aucun semestre</option> : null}
+              {semestres.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label className="text-sm">
-          <span className="text-muted-foreground">Discipline</span>
-          <select
-            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-            value={affectationId}
-            onChange={(event) => setAffectationId(event.target.value)}
-          >
-            {affectations.length === 0 ? <option value="">Aucune discipline affectée</option> : null}
-            {affectations.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.subject.name} (coef. {a.coefficient})
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="text-sm">
-          <span className="text-muted-foreground">Évaluation</span>
-          <select
-            className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-            value={assessmentId}
-            onChange={(event) => setAssessmentId(event.target.value)}
-          >
-            {evaluations.length === 0 ? <option value="">Aucune évaluation</option> : null}
-            {evaluations.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.position}. {e.title} — {LIBELLES_STATUT_EVALUATION[e.status]}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label className="text-sm">
+            <span className="text-muted-foreground">Discipline</span>
+            <select
+              className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+              value={affectationId}
+              onChange={(event) => setAffectationId(event.target.value)}
+            >
+              {affectations.length === 0 ? <option value="">Aucune discipline affectée</option> : null}
+              {affectations.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.subject.name} (coef. {a.coefficient})
+                </option>
+              ))}
+            </select>
+          </label>
         </CardContent>
       </Card>
 
@@ -302,78 +312,90 @@ export function NotesEntryPage() {
           <CardTitle className="text-base">Créer une évaluation</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-end gap-3">
-        <label className="text-sm">
-          <span className="text-muted-foreground">Nouvelle évaluation</span>
-          <Input
-            className="mt-1 h-11 w-56"
-            placeholder="Titre (ex. Devoir 1)"
-            value={nouveauTitre}
-            onChange={(event) => setNouveauTitre(event.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          <span className="text-muted-foreground">Type</span>
-          <select
-            className="mt-1 block h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
-            value={nouveauType}
-            onChange={(event) => setNouveauType(event.target.value)}
-          >
-            {types.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({t.category})
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button variant="outline" onClick={creer}>
-          Créer
-        </Button>
+          <label className="text-sm">
+            <span className="text-muted-foreground">Nouvelle évaluation</span>
+            <Input
+              className="mt-1 h-11 w-56"
+              placeholder="Titre (ex. Devoir 1)"
+              value={nouveauTitre}
+              onChange={(event) => setNouveauTitre(event.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-muted-foreground">Type</span>
+            <select
+              className="mt-1 block h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/20"
+              value={nouveauType}
+              onChange={(event) => setNouveauType(event.target.value)}
+            >
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.category})
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="outline" onClick={creer}>
+            Créer
+          </Button>
         </CardContent>
       </Card>
 
-      {!grille ? (
+      {!feuille ? (
         <p className="text-sm text-muted-foreground">
-          Choisissez une classe, un semestre, une discipline puis une évaluation (ou créez-en une).
+          Choisissez une classe, un semestre et une discipline (ou créez une évaluation).
         </p>
       ) : (
         <>
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-sm text-foreground">
-              <span className="font-medium">{grille.titre}</span> — barème {grille.bareme} —{' '}
-              {LIBELLES_STATUT_EVALUATION[grille.statut as keyof typeof LIBELLES_STATUT_EVALUATION]}
-            </p>
+            <div className="text-sm text-foreground">
+              <p>
+                <span className="font-medium">{feuille.classroomSubject.subject.name}</span> —{' '}
+                {feuille.classroomSubject.classroom.name} · {feuille.semester.name} · coef.{' '}
+                {feuille.classroomSubject.coefficient ?? '—'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {feuille.colonnes.length} évaluation(s) · {colonnesNonValidees} non validée(s) ·{' '}
+                {colonnesVerrouillees} verrouillée(s)
+              </p>
+            </div>
             <div className="flex items-center gap-3">
               <p className="text-sm text-muted-foreground">
                 {nbModifiees > 0
-                  ? `${nbModifiees} ligne(s) non enregistrée(s)`
-                  : 'Toutes les lignes sont enregistrées'}
+                  ? `${nbModifiees} note(s) non enregistrée(s)`
+                  : 'Toutes les notes sont enregistrées'}
               </p>
-              <Button onClick={enregistrer} disabled={enCours || nbModifiees === 0 || !grille.saisieAutorisee}>
+              <Button onClick={enregistrer} disabled={enCours || nbModifiees === 0}>
                 {enCours ? 'Enregistrement...' : 'Enregistrer'}
               </Button>
             </div>
           </div>
 
-          {!grille.saisieAutorisee ? (
-            <p className="rounded-lg border border-accent/60 bg-accent/15 p-3 text-sm text-foreground">
-              Saisie fermée : cette évaluation est « {grille.statut.toLowerCase()} ». Un surveillant
-              général ou l'administrateur doit la ramener en « À vérifier » pour corriger.
+          <p className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            Les évaluations non validées sont incluses dans la moyenne prévisualisée. Les colonnes
+            validées ou publiées restent visibles mais verrouillées.
+          </p>
+
+          {message ? (
+            <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">
+              {message}
+            </p>
+          ) : null}
+          {erreurGlobale ? (
+            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {erreurGlobale}
             </p>
           ) : null}
 
-          {message ? <p role="status" className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">{message}</p> : null}
-          {erreurGlobale ? <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{erreurGlobale}</p> : null}
-
-          <NotesGrid
+          <NotesSheet
+            colonnes={feuille.colonnes}
             lignes={lignesAffichees}
-            barame={grille.bareme}
-            modifiable={grille.saisieAutorisee}
             errors={erreurs}
-            onChangeLine={surChangementLigne}
+            onChangeCell={surChangementCellule}
           />
           <p className="text-xs text-muted-foreground">
-            Entrée ou ↓ : ligne suivante dans la même colonne · ↑ : ligne précédente · Tab : colonne
-            suivante.
+            Entrée ou ↓ : élève suivant dans la même évaluation · ↑ : élève précédent · Tab :
+            parcours naturel. La moyenne et l&apos;appréciation sont calculées côté serveur.
           </p>
         </>
       )}

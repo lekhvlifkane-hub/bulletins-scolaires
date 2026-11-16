@@ -310,6 +310,44 @@ describe('BulletinDetailPage — snapshot figé', () => {
     expect(appreciations).toHaveLength(0);
   });
 
+  it('modifie une appréciation par matière sans toucher aux autres champs', async () => {
+    const { appels } = ouvrir(detail('BOUILLON'));
+    await screen.findByText('Mathématiques');
+
+    const appreciation = screen.getByLabelText('Appréciation de Mathématiques');
+    fireEvent.change(appreciation, { target: { value: 'Bon travail régulier' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les champs libres' }));
+
+    await waitFor(() =>
+      expect(appels.some((a) => a.method === 'PATCH' && a.url === '/api/report-cards/rc-1')).toBe(true)
+    );
+    const patch = appels.find((a) => a.method === 'PATCH')!;
+    const corps = JSON.parse(patch.body!) as Record<string, unknown>;
+    expect(corps).toEqual({
+      appreciationsParMatiere: [
+        { subjectId: 'sub-math', appreciation: 'Bon travail régulier' },
+      ],
+    });
+  });
+
+  it('régénère les appréciations via l’endpoint dédié', async () => {
+    const { appels } = ouvrir(detail('BOUILLON'));
+    await screen.findByText('Mathématiques');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Régénérer les appréciations' }));
+
+    await waitFor(() =>
+      expect(
+        appels.some(
+          (a) =>
+            a.method === 'POST' &&
+            a.url === '/api/report-cards/rc-1/appreciations/regenerate'
+        )
+      ).toBe(true)
+    );
+    expect(await screen.findByText('Appréciations régénérées automatiquement.')).toBeInTheDocument();
+  });
+
   it('gèle un bulletin publié : lecture seule et correction motivée uniquement', async () => {
     const { appels } = ouvrir(detail('PUBLIE'));
     await screen.findByText('Mathématiques');
@@ -317,7 +355,7 @@ describe('BulletinDetailPage — snapshot figé', () => {
     // Le statut figé apparaît dans l'en-tête et dans l'historique des versions.
     expect(screen.getAllByText(/Publié \(figé\)/)).toHaveLength(2);
     expect(screen.queryByLabelText('Mention')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Non renseigné').length).toBe(2);
+    expect(screen.getAllByText('Non renseigné').length).toBe(3);
 
     const bouton = screen.getByRole('button', { name: 'Créer une version corrigée' });
     expect(bouton).toBeDisabled();

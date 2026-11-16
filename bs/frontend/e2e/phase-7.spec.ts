@@ -128,19 +128,43 @@ test.beforeEach(async ({ page }) => {
         }],
       });
     }
-    if (path === '/api/grade-grid') {
+    if (path === '/api/grade-sheet') {
       return respond({
-        assessment: { id: 'assessment-1', title: 'Devoir 1', status: 'BOUILLON', outOf: '20', saisieAutorisee: true },
+        classroomSubject: {
+          id: 'assignment-1',
+          coefficient: '1',
+          subject: { id: 'subject-1', name: 'Mathématiques', code: 'MATH' },
+          classroom: { id: 'class-1', name: '6e A' },
+        },
+        semester: { id: 'semester-1', number: 1, name: 'Semestre 1', academicYearId: 'year-1' },
+        colonnes: [{
+          id: 'assessment-1',
+          title: 'Devoir 1',
+          position: 1,
+          category: 'DEVOIR',
+          typeName: 'Devoir',
+          outOf: '20',
+          status: 'SAISIE_EN_COURS',
+          saisieAutorisee: true,
+        }],
         lignes: [{
           enrollmentId: 'enrollment-1',
           studentId: 'student-1',
           matricule: 'MAT-1',
           nom: 'Ndiaye',
           prenoms: 'Awa',
-          gradeId: null,
-          score: null,
-          status: 'NON_SAISIE',
-          observation: null,
+          notes: [{
+            assessmentId: 'assessment-1',
+            gradeId: null,
+            score: null,
+            status: 'NON_SAISIE',
+            observation: null,
+          }],
+          moyenne: null,
+          moyenneExacte: null,
+          appreciation: null,
+          incomplet: true,
+          motifs: ['Aucune moyenne : aucune note saisie'],
         }],
       });
     }
@@ -193,13 +217,16 @@ test('dashboard → enregistrer une absence depuis la vie scolaire', async ({ pa
   await expect(page.getByText(/Absence ·/)).toBeVisible();
 });
 
-test('la grille de notes reste utilisable sur une largeur mobile', async ({ page }) => {
+test('la feuille de notes reste utilisable sur une largeur mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#/saisie-notes');
   await expect(page.getByRole('heading', { name: 'Saisie des notes' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Note de Ndiaye Awa', exact: true })).toBeVisible();
-  await expect(page.getByRole('combobox', { name: 'Statut de la note de Ndiaye Awa', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Observation de Ndiaye Awa', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /Devoir 1/ })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Note de Ndiaye Awa — Devoir 1', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Statut de la note de Ndiaye Awa — Devoir 1', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Observation de Ndiaye Awa — Devoir 1', exact: true })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Moy.' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Appréciation' })).toBeVisible();
 });
 
 test('une adresse inconnue affiche une vraie page 404', async ({ page }) => {
