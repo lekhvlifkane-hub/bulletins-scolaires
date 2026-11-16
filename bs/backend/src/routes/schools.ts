@@ -7,6 +7,7 @@ import { publicSchool } from '../lib/serializers';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { requireSchoolScope } from '../middleware/school-scope';
 import { writeAuditLog } from '../services/audit';
+import { ensureDefaultLevels } from '../services/levels';
 import { requireCsrf } from '../lib/csrf';
 
 const router = Router();
@@ -195,6 +196,7 @@ router.post(
         data: { isActive: true },
       });
     });
+    await ensureDefaultLevels(schoolId);
     await writeAuditLog({
       req,
       userId: req.currentUser!.id,
@@ -288,6 +290,8 @@ router.post(
 
       return { school, admin };
     });
+
+    await ensureDefaultLevels(result.school.id);
 
     await writeAuditLog({
       req,

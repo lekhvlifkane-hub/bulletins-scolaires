@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../db/prisma';
+import { infererNiveau } from './levels';
 
 export const studentImportDataSchema = z.object({
   matricule: z.string().trim().optional().transform((value) => value || undefined),
@@ -54,7 +55,21 @@ export type AnalyzedImportRow = {
     academicYearId: string;
     academicYearName: string;
   } | null;
+  /** Classe manquante détectée : l'import peut la créer automatiquement. */
+  missingClassroom: {
+    name: string;
+    academicYearId: string;
+    academicYearName: string;
+    levelId: string;
+    levelName: string;
+  } | null;
+  /** L'année scolaire est clôturée : la classe ne peut pas être créée. */
+  closedYear: boolean;
+  /** L'année scolaire indiquée n'existe pas. */
+  unknownYear: boolean;
 };
+
+export type { AnalyzedImportRow as ImportRow };
 
 function normaliser(value: string): string {
   return value
@@ -92,6 +107,9 @@ export async function analyserImportEleves(
       candidates: [] as ImportCandidate[],
       suggestedAction: 'CREATE' as ImportSuggestedAction,
       classroom: null as AnalyzedImportRow['classroom'],
+      missingClassroom: null as AnalyzedImportRow['missingClassroom'],
+      closedYear: false,
+      unknownYear: false,
     };
   });
 
@@ -241,7 +259,47 @@ export async function analyserImportEleves(
           normaliser(classroom.academicYear.name) === normaliser(item.data!.academicYear)),
       );
       if (candidates.length === 0) {
-        item.error = 'Classe ou année scolaire introuvable, ou année clôturée';
+        // La classe n'existe pas. Vérifier si l'année existe et si elle est clôturée.
+        const allYears = await prisma.academicYear.findMany({
+          where: { schoolId, deletedAt: null },
+          select: { id: true, name: true, status: true },
+        });
+        const requestedYear = item.data.academicYear
+          ? allYears.find((y) => normaliser(y.name) === normaliser(item.data!.academicYear!))
+          : allYears.find((y) => y.status === 'ACTIVE') ?? allYears[0];
+
+        if (!requestedYear) {
+          item.unknownYear = true;
+          item.error = item.data.academicYear
+            ? `Année scolaire introuvable : ${item.data.academicYear}`
+            : 'Aucune année scolaire active';
+          continue;
+        }
+
+        if (requestedYear.status === 'CLOSED') {
+          item.closedYear = true;
+          item.error = `L'année scolaire ${requestedYear.name} est clôturée : classe et inscriptions impossibles`;
+          continue;
+        }
+
+        // L'année est active ou en préparation : la classe peut être créée.
+        // Inférer le niveau depuis le nom de la classe.
+        const niveaux = await prisma.level.findMany({
+          where: { schoolId, deletedAt: null },
+          select: { id: true, name: true },
+        });
+        const niveau = infererNiveau(item.data.classroom, niveaux);
+        if (!niveau) {
+          item.error = `Classe introuvable et niveau non reconnu : ${item.data.classroom}`;
+          continue;
+        }
+        item.missingClassroom = {
+          name: item.data.classroom.trim(),
+          academicYearId: requestedYear.id,
+          academicYearName: requestedYear.name,
+          levelId: niveau.id,
+          levelName: niveau.name,
+        };
       } else if (candidates.length > 1) {
         item.error = 'Classe présente dans plusieurs années : préciser l’année scolaire';
       } else {

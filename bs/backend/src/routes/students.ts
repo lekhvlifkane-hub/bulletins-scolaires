@@ -94,6 +94,9 @@ router.post('/import/preview', requireCsrf, asyncHandler(async (req, res) => {
         deletedAt: candidate.deletedAt?.toISOString() ?? null,
       })),
       classroom: item.classroom,
+      missingClassroom: item.missingClassroom,
+      closedYear: item.closedYear,
+      unknownYear: item.unknownYear,
     })),
   });
 }));
@@ -161,7 +164,7 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
       });
       continue;
     }
-    if (row.data.status !== 'NOUVEAU' && !row.classroom) {
+    if (row.data.status !== 'NOUVEAU' && !row.classroom && !row.missingClassroom) {
       outcomes.push({
         row: row.row,
         matricule,
@@ -317,7 +320,67 @@ router.post('/import', requireCsrf, asyncHandler(async (req, res) => {
         status = 'created';
       }
 
-      if (row.classroom) {
+      if (row.missingClassroom) {
+        // Créer la classe manquante automatiquement.
+        const existing = await transaction.classroom.findFirst({
+          where: {
+            schoolId,
+            academicYearId: row.missingClassroom.academicYearId,
+            name: row.missingClassroom.name,
+            deletedAt: null,
+          },
+        });
+        let classroomId: string;
+        if (existing) {
+          classroomId = existing.id;
+        } else {
+          const created = await transaction.classroom.create({
+            data: {
+              schoolId,
+              academicYearId: row.missingClassroom.academicYearId,
+              levelId: row.missingClassroom.levelId,
+              name: row.missingClassroom.name,
+            },
+          });
+          classroomId = created.id;
+        }
+        const activeEnrollment = await transaction.enrollment.findFirst({
+          where: { schoolId, studentId, status: 'ACTIVE', deletedAt: null },
+          select: { id: true, classroomId: true },
+        });
+        if (activeEnrollment?.classroomId === classroomId) {
+          result.push({
+            row: row.row,
+            matricule,
+            status: status === 'updated' ? 'updated' : 'skipped',
+            studentId,
+            classroomId,
+          });
+          continue;
+        }
+        if (activeEnrollment) {
+          await transaction.enrollment.update({
+            where: { id: activeEnrollment.id },
+            data: { status: 'TRANSFERRED', endedAt: new Date() },
+          });
+        }
+        await transaction.enrollment.create({
+          data: {
+            schoolId,
+            studentId,
+            classroomId,
+            isRepeating: data.status === 'REDOUBLANT',
+            entryType: data.status === 'TRANSFERE' ? 'TRANSFERRED' : 'NEW',
+          },
+        });
+        result.push({
+          row: row.row,
+          matricule,
+          status,
+          studentId,
+          classroomId,
+        });
+      } else if (row.classroom) {
         const activeEnrollment = await transaction.enrollment.findFirst({
           where: { schoolId, studentId, status: 'ACTIVE', deletedAt: null },
           select: { id: true, classroomId: true },

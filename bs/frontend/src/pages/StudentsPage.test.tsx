@@ -116,7 +116,7 @@ describe('StudentsPage CSV', () => {
       target: { files: [file] },
     });
 
-    expect(await screen.findByText('Aperçu : 1 ligne(s) prêtes, 2 ligne(s) à ignorer.')).toBeInTheDocument();
+    expect(await screen.findByText('Aperçu : 1 ligne(s) prête(s), 2 ligne(s) à ignorer.')).toBeInTheDocument();
     expect(screen.getByText('Ligne 3 — Doublon potentiel')).toBeInTheDocument();
     expect(screen.getByText(/Ligne 4 — Date de naissance obligatoire ou invalide/)).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/Diallo Awa · EL-OLD/));

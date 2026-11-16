@@ -68,6 +68,9 @@ type ParsedRow = {
   candidates?: ImportCandidate[];
   action?: 'CREATE' | 'LINK' | 'UPDATE';
   candidateId?: string;
+  missingClassroom?: { name: string; academicYearId: string; academicYearName: string; levelId: string; levelName: string };
+  closedYear?: boolean;
+  unknownYear?: boolean;
 };
 
 type ImportResult = {
@@ -361,6 +364,7 @@ export function StudentsPage() {
   const [preview, setPreview] = useState<ParsedRow[] | null>(null);
   const [importing, setImporting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [confirmMissingClasses, setConfirmMissingClasses] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (query = search) => {
@@ -379,7 +383,10 @@ export function StudentsPage() {
       Boolean(
         row.data &&
         !row.error &&
+        !row.closedYear &&
+        !row.unknownYear &&
         (row.action === 'CREATE' ||
+          row.missingClassroom ||
           ((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
       );
     return {
@@ -414,6 +421,7 @@ export function StudentsPage() {
     setError(null);
     setMessage(null);
     setPreview(null);
+    setConfirmMissingClasses(false);
     if (!file) return;
     try {
       if (file.size > 5 * 1024 * 1024) throw new Error('Le fichier dépasse la taille maximale de 5 Mo.');
@@ -429,33 +437,42 @@ export function StudentsPage() {
           students: localRows.map((row) => ({ row: row.line, student: row.data ?? {} })),
         }),
       });
-      const serverPreview = await lireReponse<{
-        rows: {
-          row: number;
-          status: 'READY' | 'DUPLICATE' | 'UPDATE' | 'ERROR';
-          error: string | null;
-          suggestedAction: 'CREATE' | 'LINK' | 'UPDATE';
-          suggestedCandidateId: string | null;
-          candidates: ImportCandidate[];
-          classroom: unknown;
-        }[];
-      }>(response, 'Impossible de vérifier le fichier');
-      const byRow = new Map(serverPreview.rows.map((row) => [row.row, row]));
-      setPreview(localRows.map((row) => {
-        const checked = byRow.get(row.line);
-        if (row.error || !checked) return row;
-        return {
-          ...row,
-          error: checked.error ?? undefined,
-          duplicate: checked.status === 'DUPLICATE',
-          candidates: checked.candidates,
-          ...(checked.status === 'READY'
-            ? { action: 'CREATE' as const }
-            : checked.status === 'UPDATE' && checked.suggestedCandidateId
-              ? { action: 'UPDATE' as const, candidateId: checked.suggestedCandidateId }
-              : {}),
-        };
-      }));
+const serverPreview = await lireReponse<{
+      rows: {
+        row: number;
+        status: 'READY' | 'DUPLICATE' | 'UPDATE' | 'ERROR';
+        error: string | null;
+        suggestedAction: 'CREATE' | 'LINK' | 'UPDATE';
+        suggestedCandidateId: string | null;
+        candidates: ImportCandidate[];
+        classroom: unknown;
+        missingClassroom: { name: string; academicYearId: string; academicYearName: string; levelId: string; levelName: string } | null;
+        closedYear: boolean;
+        unknownYear: boolean;
+      }[];
+    }>(response, 'Impossible de vérifier le fichier');
+    const byRow = new Map(serverPreview.rows.map((row) => [row.row, row]));
+    setPreview(localRows.map((row) => {
+      const checked = byRow.get(row.line);
+      if (row.error || !checked) return row;
+      // Si la classe est manquante mais peut être créée, on l'accepte comme READY
+      // avec une action CREATE_MISSING_CLASS.
+      const missingClass = checked.missingClassroom;
+      return {
+        ...row,
+        error: checked.error ?? undefined,
+        duplicate: checked.status === 'DUPLICATE',
+        candidates: checked.candidates,
+        missingClassroom: missingClass ?? undefined,
+        closedYear: checked.closedYear || undefined,
+        unknownYear: checked.unknownYear || undefined,
+        ...(checked.status === 'READY' && !missingClass
+          ? { action: 'CREATE' as const }
+          : checked.status === 'UPDATE' && checked.suggestedCandidateId
+            ? { action: 'UPDATE' as const, candidateId: checked.suggestedCandidateId }
+            : {}),
+      };
+    }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de lire le fichier');
     } finally {
@@ -468,7 +485,10 @@ export function StudentsPage() {
     const rows = preview.filter((row) =>
       row.data &&
       !row.error &&
+      !row.closedYear &&
+      !row.unknownYear &&
       (row.action === 'CREATE' ||
+        row.missingClassroom ||
         ((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
     );
     if (rows.length === 0) {
@@ -502,11 +522,14 @@ export function StudentsPage() {
       const previewSkipped = preview.filter((row) =>
         !row.data ||
         row.error ||
+        row.closedYear ||
+        row.unknownYear ||
         (row.action !== 'CREATE' &&
+          !row.missingClassroom &&
           !((row.action === 'LINK' || row.action === 'UPDATE') && row.candidateId)),
       )
         .map((row) =>
-          `ligne ${row.line}: ${row.error ?? 'doublon non confirmé'}`,
+          `ligne ${row.line}: ${row.error ?? (row.closedYear ? 'année clôturée' : row.unknownYear ? 'année inconnue' : 'doublon non confirmé')}`,
         );
       const skippedDetails = [
         ...previewSkipped,
@@ -519,6 +542,7 @@ export function StudentsPage() {
           (skippedDetails.length ? ` ${skippedDetails.join(' · ')}` : ''),
       );
       setPreview(null);
+      setConfirmMissingClasses(false);
       if (fileInput.current) fileInput.current.value = '';
       await load();
     } catch (cause) {
@@ -698,7 +722,7 @@ export function StudentsPage() {
               <Button
                 type="button"
                 onClick={() => void importStudents()}
-                disabled={importing || previewing || previewCounts.valid === 0}
+                disabled={importing || previewing || previewCounts.valid === 0 || (preview.some((r) => r.missingClassroom) && !confirmMissingClasses)}
               >
                 {importing ? 'Import en cours…' : `Importer ${previewCounts.valid} ligne(s) confirmée(s)`}
               </Button>
@@ -708,8 +732,23 @@ export function StudentsPage() {
           {preview && (
             <div className="space-y-3">
               <p role="status" className="text-sm text-foreground">
-                Aperçu : {previewCounts.valid} ligne(s) prêtes, {previewCounts.skipped} ligne(s) à ignorer.
+                Aperçu : {previewCounts.valid} ligne(s) prête(s), {previewCounts.skipped} ligne(s) à ignorer.
               </p>
+              {preview.some((r) => r.missingClassroom) ? (
+                <label className="flex items-start gap-2 rounded-lg border border-accent/50 bg-accent/15 p-3 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={confirmMissingClasses}
+                    onChange={(event) => setConfirmMissingClasses(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-input"
+                  />
+                  <span>
+                    Je confirme la création automatique des classes manquantes
+                    ({[...new Set(preview.filter((r) => r.missingClassroom).map((r) => r.missingClassroom!.name))].join(', ')})
+                    dans l'année scolaire active.
+                  </span>
+                </label>
+              ) : null}
               <ul className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-accent/50 bg-accent/15 p-3 text-sm text-foreground">
                 {preview.map((row) => (
                   <li key={row.line} className="space-y-2 border-b border-accent/30 pb-2 last:border-0">
@@ -717,11 +756,17 @@ export function StudentsPage() {
                       Ligne {row.line}
                       {row.error
                         ? ` — ${row.error}`
-                        : row.action === 'UPDATE'
-                          ? ' — mise à jour de la fiche existante'
-                          : row.duplicate
-                            ? ' — Doublon potentiel'
-                            : ' — prête'}
+                        : row.closedYear
+                          ? ' — année clôturée'
+                          : row.unknownYear
+                            ? ' — année inconnue'
+                            : row.missingClassroom
+                              ? ` — classe « ${row.missingClassroom.name} » à créer dans ${row.missingClassroom.academicYearName} (${row.missingClassroom.levelName})`
+                              : row.action === 'UPDATE'
+                                ? ' — mise à jour de la fiche existante'
+                                : row.duplicate
+                                  ? ' — Doublon potentiel'
+                                  : ' — prête'}
                     </p>
                     {row.duplicate && row.candidates?.length ? (
                       <fieldset className="ml-3 space-y-1">

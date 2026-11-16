@@ -7,6 +7,7 @@ import { requireCsrf } from '../lib/csrf';
 import { requireAuth, requireRole, requireSchoolId } from '../middleware/auth';
 import { writeAuditLog } from '../services/audit';
 import { ensureDefaultAppreciationRules } from '../services/appreciations/rules';
+import { ensureDefaultLevels } from '../services/levels';
 
 const router = Router();
 const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'La date de fin doit être après la date de début' });
@@ -228,9 +229,9 @@ router.patch('/semesters/:id', requireCsrf, asyncHandler(async (req, res) => {
   });
   res.json({ semester: updated });
 }));
-router.get('/levels', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({levels:await prisma.level.findMany({where:{schoolId,deletedAt:null},orderBy:[{sortOrder:'asc'},{name:'asc'}]})});}));
+router.get('/levels', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);await ensureDefaultLevels(schoolId);res.json({levels:await prisma.level.findMany({where:{schoolId,deletedAt:null},orderBy:[{sortOrder:'asc'},{name:'asc'}]})});}));
 router.post('/levels', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.parse(req.body);const level=await prisma.level.create({data:{schoolId,name:data.name,sortOrder:data.sortOrder??0}});res.status(201).json({level});}));
-router.get('/series', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({series:await prisma.series.findMany({where:{schoolId,deletedAt:null},include:{level:true},orderBy:{name:'asc'}})});}));
+router.get('/series', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);await ensureDefaultLevels(schoolId);res.json({series:await prisma.series.findMany({where:{schoolId,deletedAt:null},include:{level:true},orderBy:{name:'asc'}})});}));
 router.post('/series', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.parse(req.body);if(data.levelId&&!await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}}))throw new HttpError(404,'Niveau introuvable');const series=await prisma.series.create({data:{schoolId,name:data.name,levelId:data.levelId}});res.status(201).json({series});}));
 router.get('/classes', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({classes:await prisma.classroom.findMany({where:{schoolId,deletedAt:null},include:{academicYear:true,level:true,series:true,_count:{select:{enrollments:{where:{status:'ACTIVE',deletedAt:null}}}}},orderBy:{name:'asc'}})});}));
 router.post('/classes', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=classSchema.parse(req.body);const year=await prisma.academicYear.findFirst({where:{id:data.academicYearId,schoolId,deletedAt:null}});const level=await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}});if(!year||!level)throw new HttpError(404,'Année ou niveau introuvable');if(year.status==='CLOSED')throw new HttpError(409,"L'année scolaire est clôturée");const classroom=await prisma.classroom.create({data:{...data,schoolId}});res.status(201).json({classroom});}));
