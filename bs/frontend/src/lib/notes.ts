@@ -126,6 +126,9 @@ export interface Semestre {
   id: string;
   number: number;
   name: string;
+  /** Dates portées par l'API `/api/schooling/years` (utilisées pour borner la saisie). */
+  startsAt?: string;
+  endsAt?: string;
 }
 
 export interface YearSemestre {

@@ -76,7 +76,7 @@ function reponse(data: unknown, status = 200) {
   );
 }
 
-function installerBackend() {
+function installerBackend(annees = ANNEES) {
   const appels: Appel[] = [];
   const presences: Record<string, unknown>[] = [
     {
@@ -115,7 +115,7 @@ function installerBackend() {
     appels.push({ url, init, corps });
 
     if (url.startsWith('/api/schooling/classes')) return reponse({ classes: [CLASSE] });
-    if (url.startsWith('/api/schooling/years')) return reponse(ANNEES);
+    if (url.startsWith('/api/schooling/years')) return reponse(annees);
     if (url.startsWith('/api/schooling/classroom-subjects')) return reponse(AFFECTATIONS);
     if (url.startsWith('/api/report-cards')) return reponse(BULLETINS);
 
@@ -348,5 +348,30 @@ describe('VieScolairePage — phase 6', () => {
     await waitFor(() =>
       expect(screen.getByText('Ndiaye Awa — Semestre 1 · v1 · PUBLIE')).toBeInTheDocument(),
     );
+  });
+
+  it('borne la date de présence aux dates du semestre sélectionné', async () => {
+    // Semestre terminé depuis longtemps : la date du jour en est forcément
+    // hors période, le formulaire doit la ramener à la borne la plus proche.
+    const anneesPassees = {
+      years: [
+        {
+          id: 'an-1',
+          name: '2019-2020',
+          status: 'ACTIVE',
+          semesters: [
+            { id: 'sem-1', number: 1, name: 'Semestre 1', startsAt: '2019-09-02T00:00:00.000Z', endsAt: '2020-06-30T00:00:00.000Z' },
+            { id: 'sem-2', number: 2, name: 'Semestre 2', startsAt: '2020-07-01T00:00:00.000Z', endsAt: '2021-07-31T00:00:00.000Z' },
+          ],
+        },
+      ],
+    };
+    installerBackend(anneesPassees);
+    render(<VieScolairePage />);
+
+    const champ = await screen.findByLabelText('Date');
+    await waitFor(() => expect(champ).toHaveValue('2020-06-30'));
+    expect(champ).toHaveAttribute('min', '2019-09-02');
+    expect(champ).toHaveAttribute('max', '2020-06-30');
   });
 });

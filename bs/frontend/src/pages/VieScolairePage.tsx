@@ -37,6 +37,21 @@ function aujourdHui() {
   return local.toISOString().slice(0, 10);
 }
 
+/**
+ * Borne une date (AAAA-MM-JJ) dans les dates du semestre : aujourd'hui si elle
+ * y est comprise, sinon la borne la plus proche. Sans dates connues, la valeur
+ * est rendue telle quelle.
+ */
+function dateDansSemestre(dateStr: string, semestre: { startsAt?: string; endsAt?: string } | null | undefined): string {
+  if (!semestre?.startsAt || !semestre?.endsAt) return dateStr;
+  // L'API renvoie des horodatages ISO complets : un champ date n'accepte que AAAA-MM-JJ.
+  const debut = semestre.startsAt.slice(0, 10);
+  const fin = semestre.endsAt.slice(0, 10);
+  if (dateStr < debut) return debut;
+  if (dateStr > fin) return fin;
+  return dateStr;
+}
+
 function Erreur({ children }: { children: string }) {
   return <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">{children}</p>;
 }
@@ -73,6 +88,7 @@ export function VieScolairePage() {
   const classe = classes.find((item) => item.id === classroomId) ?? null;
   const annee = annees.find((item) => item.id === classe?.academicYear.id) ?? null;
   const semestres = annee?.semesters ?? [];
+  const semestreCourant = semestres.find((item) => item.id === semesterId) ?? null;
   const eleve = eleves.find((item) => item.enrollmentId === enrollmentId) ?? null;
   const peutEcrireDecision = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SURVEILLANT_GENERAL';
   const anneesArchivees = annees.filter((item) => item.status === 'CLOSED');
@@ -127,6 +143,13 @@ export function VieScolairePage() {
       setSemesterId('');
     }
   }, [semestres, semesterId]);
+
+  // La date de présence est bornée au semestre sélectionné : aujourd'hui si
+  // possible, sinon la borne la plus proche (évite l'erreur serveur hors période).
+  useEffect(() => {
+    if (!semestreCourant) return;
+    setDatePresence((current) => dateDansSemestre(current, semestreCourant));
+  }, [semestreCourant]);
 
   useEffect(() => {
     if (!classroomId) {
@@ -349,7 +372,7 @@ export function VieScolairePage() {
               </select>
             </label>
             <label className="block space-y-1 text-sm font-medium">Date
-              <input required type="date" className={inputClass} value={datePresence} onChange={(event) => setDatePresence(event.target.value)} />
+              <input required type="date" min={semestreCourant?.startsAt?.slice(0, 10) ?? undefined} max={semestreCourant?.endsAt?.slice(0, 10) ?? undefined} className={inputClass} value={datePresence} onChange={(event) => setDatePresence(event.target.value)} />
             </label>
             {typePresence === 'ABSENCE' ? (
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={justifiee} onChange={(event) => setJustifiee(event.target.checked)} /> Absence justifiée</label>
