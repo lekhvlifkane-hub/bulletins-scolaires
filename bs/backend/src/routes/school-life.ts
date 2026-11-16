@@ -216,13 +216,30 @@ function dateOnly(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
+function assertAnneeOuverte(year: { status: string }) {
+  if (year.status === 'CLOSED') throw new HttpError(409, "L'année scolaire est clôturée");
+}
+
+async function assertSemestreModifiable(schoolId: string, semesterId: string) {
+  const semester = await prisma.semester.findFirst({
+    where: { id: semesterId, academicYear: { schoolId } },
+    include: { academicYear: { select: { status: true } } },
+  });
+  if (!semester) throw new HttpError(404, 'Semestre introuvable');
+  assertAnneeOuverte(semester.academicYear);
+  return semester;
+}
+
 async function assertEnrollmentSemester(schoolId: string, enrollmentId: string, semesterId: string) {
   const [enrollment, semester] = await Promise.all([
     prisma.enrollment.findFirst({
       where: { id: enrollmentId, schoolId, deletedAt: null },
       include: { classroom: true },
     }),
-    prisma.semester.findFirst({ where: { id: semesterId, academicYear: { schoolId } } }),
+    prisma.semester.findFirst({
+      where: { id: semesterId, academicYear: { schoolId } },
+      include: { academicYear: { select: { status: true } } },
+    }),
   ]);
   if (!enrollment || !semester) throw new HttpError(404, 'Inscription ou semestre introuvable');
   if (
@@ -259,7 +276,8 @@ router.get('/attendance', asyncHandler(async (req, res) => {
 router.post('/attendance', requireCsrf, asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const data = attendanceSchema.parse(req.body);
-  await assertEnrollmentSemester(schoolId, data.enrollmentId, data.semesterId);
+  const { semester } = await assertEnrollmentSemester(schoolId, data.enrollmentId, data.semesterId);
+  assertAnneeOuverte(semester.academicYear);
   const date = await validerDateDansSemestre(data.date, data.semesterId);
   if (data.kind === 'ABSENCE' && data.durationMinutes !== undefined && data.durationMinutes !== null) {
     throw new HttpError(400, 'La durée en minutes est réservée aux retards');
@@ -292,6 +310,7 @@ router.patch('/attendance/:id', requireCsrf, asyncHandler(async (req, res) => {
     where: { id: req.params.id, schoolId, deletedAt: null },
   });
   if (!before) throw new HttpError(404, 'Événement de présence introuvable');
+  await assertSemestreModifiable(schoolId, before.semesterId);
   const kind = data.kind ?? before.kind;
   if (kind === 'ABSENCE' && data.durationMinutes != null) {
     throw new HttpError(400, 'La durée en minutes est réservée aux retards');
@@ -322,6 +341,7 @@ router.delete('/attendance/:id', requireCsrf, asyncHandler(async (req, res) => {
     where: { id: req.params.id, schoolId, deletedAt: null },
   });
   if (!before) throw new HttpError(404, 'Événement de présence introuvable');
+  await assertSemestreModifiable(schoolId, before.semesterId);
   const record = await prisma.attendanceRecord.update({
     where: { id: before.id },
     data: { deletedAt: new Date() },
@@ -341,7 +361,10 @@ router.delete('/attendance/:id', requireCsrf, asyncHandler(async (req, res) => {
 router.put('/appreciations', requireCsrf, asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const data = appreciationSchema.parse(req.body);
-  const { enrollment } = await assertEnrollmentSemester(schoolId, data.enrollmentId, data.semesterId);
+  const { enrollment, semester } = await assertEnrollmentSemester(
+    schoolId, data.enrollmentId, data.semesterId,
+  );
+  assertAnneeOuverte(semester.academicYear);
   const subject = await prisma.classroomSubject.findFirst({
     where: {
       schoolId,
@@ -468,6 +491,7 @@ router.delete('/appreciations/:id', requireCsrf, asyncHandler(async (req, res) =
     where: { id: req.params.id, schoolId, deletedAt: null },
   });
   if (!before) throw new HttpError(404, 'Appréciation introuvable');
+  await assertSemestreModifiable(schoolId, before.semesterId);
   const appreciation = await prisma.$transaction(async (tx) => {
     const updated = await tx.appreciation.update({
       where: { id: before.id },
@@ -515,6 +539,7 @@ router.post('/council-decisions', requireCsrf, requireRole('SCHOOL_ADMIN', 'SURV
     where: { id: data.academicYearId, schoolId, deletedAt: null },
   });
   if (!enrollment || !year) throw new HttpError(404, 'Inscription ou année scolaire introuvable');
+  assertAnneeOuverte(year);
   if (enrollment.classroom.academicYearId !== year.id) {
     throw new HttpError(400, "L'inscription ne correspond pas à l'année scolaire");
   }
@@ -560,8 +585,10 @@ router.post('/council-decisions/:id/validate', requireCsrf, requireRole('SCHOOL_
   const schoolId = requireSchoolId(req);
   const decision = await prisma.councilDecision.findFirst({
     where: { id: req.params.id, schoolId, isCurrent: true, deletedAt: null },
+    include: { academicYear: { select: { status: true } } },
   });
   if (!decision) throw new HttpError(404, 'Décision du conseil introuvable');
+  assertAnneeOuverte(decision.academicYear);
   if (decision.status === 'VALIDEE') {
     res.json({ decision, dejaValidee: true });
     return;
