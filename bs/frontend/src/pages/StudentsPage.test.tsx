@@ -210,4 +210,79 @@ describe('StudentsPage CSV', () => {
     expect(await screen.findByText('Élève créé.')).toBeInTheDocument();
     expect(bodySent).toEqual({ lastName: 'Fall', firstNames: 'Awa', birthDate: '2012-04-03' });
   });
+
+  it('transfère plusieurs élèves sélectionnés vers la classe choisie', async () => {
+    const eleves = {
+      students: [
+        {
+          id: 'eleve-1',
+          matricule: 'ELI001',
+          lastName: 'Ndiaye',
+          firstNames: 'Awa',
+          birthDate: '2012-04-03',
+          enrollments: [
+            { isRepeating: false, entryType: 'NEW', classroom: { id: 'cls-1', name: '6e A', academicYear: { name: '2026-2027' } } },
+          ],
+        },
+        {
+          id: 'eleve-2',
+          matricule: 'ELI002',
+          lastName: 'Diop',
+          firstNames: 'Moussa',
+          birthDate: '2011-05-04',
+          enrollments: [
+            { isRepeating: true, entryType: 'TRANSFERRED', classroom: { id: 'cls-1', name: '6e A', academicYear: { name: '2026-2027' } } },
+          ],
+        },
+        {
+          id: 'eleve-3',
+          matricule: 'ELI003',
+          lastName: 'Fall',
+          firstNames: 'Sokhna',
+          birthDate: '2010-09-12',
+          enrollments: [
+            { isRepeating: false, entryType: 'NEW', classroom: { id: 'cls-2', name: '5e B', academicYear: { name: '2026-2027' } } },
+          ],
+        },
+      ],
+    };
+    const transferts: { id: string; corps: unknown }[] = [];
+    vi.mocked(api.fetch).mockImplementation(async (path, init) => {
+      const method = init?.method ?? 'GET';
+      if (path === '/api/students' && method === 'GET') return reponse(eleves);
+      if (path === '/api/schooling/classes') {
+        return reponse({
+          classes: [
+            { id: 'cls-1', name: '6e A', academicYear: { id: 'an-1', name: '2026-2027', status: 'ACTIVE' } },
+            { id: 'cls-2', name: '5e B', academicYear: { id: 'an-1', name: '2026-2027', status: 'ACTIVE' } },
+          ],
+        });
+      }
+      const transfert = /\/api\/students\/([^/]+)\/enrollments$/.exec(path);
+      if (transfert && method === 'POST') {
+        transferts.push({ id: transfert[1], corps: JSON.parse(String(init.body)) });
+        return reponse({ message: 'Inscription créée' }, 201);
+      }
+      return reponse({ error: `Requête inattendue : ${method} ${path}` }, 500);
+    });
+
+    render(<MemoryRouter><StudentsPage /></MemoryRouter>);
+    fireEvent.click(await screen.findByLabelText('Sélectionner Ndiaye Awa'));
+    fireEvent.click(screen.getByLabelText('Sélectionner Diop Moussa'));
+    fireEvent.click(screen.getByLabelText('Sélectionner Fall Sokhna'));
+
+    expect(screen.getByText('3 élève(s) sélectionné(s)')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Nouvelle classe pour la sélection'), {
+      target: { value: 'cls-2' },
+    });
+    fireEvent.click(screen.getByLabelText('Inscription redoublante pour la sélection'));
+    fireEvent.click(screen.getByRole('button', { name: 'Transférer la sélection' }));
+
+    expect(await screen.findByText(/2 élève\(s\) transféré\(s\) vers 5e B — 1 déjà dans cette classe/)).toBeInTheDocument();
+    expect(transferts).toEqual([
+      { id: 'eleve-1', corps: { classroomId: 'cls-2', isRepeating: true } },
+      { id: 'eleve-2', corps: { classroomId: 'cls-2', isRepeating: true } },
+    ]);
+    expect(screen.getByLabelText('Tout sélectionner')).not.toBeChecked();
+  });
 });

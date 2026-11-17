@@ -46,8 +46,14 @@ type Student = {
   enrollments: {
     isRepeating: boolean;
     entryType: 'NEW' | 'TRANSFERRED' | null;
-    classroom: { name: string; academicYear: { name: string } };
+    classroom: { id: string; name: string; academicYear: { name: string } };
   }[];
+};
+
+type ClasseTransfert = {
+  id: string;
+  name: string;
+  academicYear: { id: string; name: string; status: string };
 };
 
 type ImportCandidate = {
@@ -357,6 +363,11 @@ function lireFichier(file: File): Promise<string> {
 
 export function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<ClasseTransfert[]>([]);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [classeTransfert, setClasseTransfert] = useState('');
+  const [redoublantTransfert, setRedoublantTransfert] = useState(false);
+  const [transfertEnCours, setTransfertEnCours] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -371,11 +382,25 @@ export function StudentsPage() {
     const response = await api.fetch(`/api/students${query ? `?search=${encodeURIComponent(query)}` : ''}`);
     const body = await lireReponse<{ students: Student[] }>(response, 'Impossible de charger les élèves');
     setStudents(body.students);
+    // On retire de la sélection les élèves qui ne sont plus dans la liste.
+    setSelection((current) => {
+      const presentes = new Set(body.students.map((student) => student.id));
+      const restantes = [...current].filter((id) => presentes.has(id));
+      return restantes.length === current.size ? current : new Set(restantes);
+    });
   }, [search]);
 
   useEffect(() => {
     void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Erreur de chargement'));
   }, [load]);
+
+  // Les classes cibles du transfert : celles des années non clôturées.
+  useEffect(() => {
+    api.fetch('/api/schooling/classes')
+      .then((response) => lireReponse<{ classes: ClasseTransfert[] }>(response, 'Impossible de charger les classes'))
+      .then((body) => setClasses((body.classes ?? []).filter((classe) => classe.academicYear.status !== 'CLOSED')))
+      .catch((cause) => setError(cause instanceof Error ? cause.message : 'Erreur de chargement'));
+  }, []);
 
   const previewCounts = useMemo(() => {
     const rows = preview ?? [];
@@ -413,6 +438,62 @@ export function StudentsPage() {
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de créer l’élève');
+    }
+  };
+
+  const toggleSelection = (id: string, cocher: boolean) => {
+    setSelection((current) => {
+      const next = new Set(current);
+      if (cocher) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleTout = (cocher: boolean) => {
+    setSelection(cocher ? new Set(students.map((student) => student.id)) : new Set());
+  };
+
+  const transfererSelection = async () => {
+    const classeCible = classes.find((classe) => classe.id === classeTransfert);
+    if (!classeCible || selection.size === 0) return;
+    setError(null);
+    setMessage(null);
+    setTransfertEnCours(true);
+    const echecs: string[] = [];
+    let transferes = 0;
+    let dejas = 0;
+    try {
+      for (const student of students.filter((item) => selection.has(item.id))) {
+        if (student.enrollments[0]?.classroom.id === classeCible.id) {
+          dejas += 1;
+          continue;
+        }
+        try {
+          const response = await api.fetch(`/api/students/${student.id}/enrollments`, {
+            method: 'POST',
+            body: JSON.stringify({ classroomId: classeCible.id, isRepeating: redoublantTransfert }),
+          });
+          await lireReponse(response, 'Impossible de transférer l’élève');
+          transferes += 1;
+        } catch (cause) {
+          echecs.push(
+            `${student.lastName} ${student.firstNames} (${student.matricule}) : ` +
+              (cause instanceof Error ? cause.message : 'transfert impossible'),
+          );
+        }
+      }
+      const parties = [
+        `${transferes} élève(s) transféré(s) vers ${classeCible.name}`,
+        dejas ? `${dejas} déjà dans cette classe (ignoré(s))` : '',
+        echecs.length ? `Échecs : ${echecs.join(' · ')}` : '',
+      ].filter(Boolean);
+      setMessage(parties.join(' — '));
+      setSelection(new Set());
+      setRedoublantTransfert(false);
+      await load();
+    } finally {
+      setTransfertEnCours(false);
     }
   };
 
@@ -836,10 +917,71 @@ const serverPreview = await lireReponse<{
           <Users aria-hidden="true" className="h-4 w-4" />
           {students.length} élève(s){search ? ' dans les résultats' : ''}
         </div>
+        {selection.size > 0 && (
+          <form
+            role="group"
+            aria-label="Transfert de la sélection"
+            className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void transfererSelection();
+            }}
+          >
+            <span className="text-sm font-medium text-foreground">
+              {selection.size} élève(s) sélectionné(s)
+            </span>
+            <label className="grid gap-1 text-sm font-medium text-foreground">
+              Transférer vers
+              <select
+                aria-label="Nouvelle classe pour la sélection"
+                required
+                className={inputClass + ' min-w-[220px]'}
+                value={classeTransfert}
+                onChange={(event) => setClasseTransfert(event.target.value)}
+              >
+                <option value="">Choisir une classe…</option>
+                {classes.map((classe) => (
+                  <option key={classe.id} value={classe.id}>
+                    {classe.name} · {classe.academicYear.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                aria-label="Inscription redoublante pour la sélection"
+                checked={redoublantTransfert}
+                onChange={(event) => setRedoublantTransfert(event.target.checked)}
+                className="h-4 w-4 rounded border-input"
+              />
+              Inscription redoublante
+            </label>
+            <Button type="submit" disabled={!classeTransfert || transfertEnCours}>
+              Transférer la sélection
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSelection(new Set())}
+            >
+              Annuler la sélection
+            </Button>
+          </form>
+        )}
         <Card className="gap-0 overflow-hidden border-border py-0 shadow-sm">
           <Table className="min-w-[700px] text-left">
             <TableHeader className="bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <TableRow className="hover:bg-transparent">
+                <TableHead className="h-12 w-10 px-4">
+                  <input
+                    type="checkbox"
+                    aria-label="Tout sélectionner"
+                    checked={students.length > 0 && selection.size === students.length}
+                    onChange={(event) => toggleTout(event.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                </TableHead>
                 <TableHead className="h-12 px-5">Matricule</TableHead>
                 <TableHead className="h-12 px-5">Élève</TableHead>
                 <TableHead className="h-12 px-5">Date de naissance</TableHead>
@@ -851,12 +993,21 @@ const serverPreview = await lireReponse<{
             <TableBody>
               {students.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                     Aucun élève trouvé.
                   </TableCell>
                 </TableRow>
               ) : students.map((student) => (
                 <TableRow key={student.id}>
+                  <TableCell className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Sélectionner ${student.lastName} ${student.firstNames}`}
+                      checked={selection.has(student.id)}
+                      onChange={(event) => toggleSelection(student.id, event.target.checked)}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                  </TableCell>
                   <TableCell className="px-5 py-3 font-mono text-xs">{student.matricule}</TableCell>
                   <TableCell className="px-5 py-3 font-semibold text-foreground">
                     {student.lastName} {student.firstNames}
