@@ -260,7 +260,7 @@ describe('StudentsPage CSV', () => {
       }
       const transfert = /\/api\/students\/([^/]+)\/enrollments$/.exec(path);
       if (transfert && method === 'POST') {
-        transferts.push({ id: transfert[1], corps: JSON.parse(String(init.body)) });
+        transferts.push({ id: transfert[1], corps: JSON.parse(String(init?.body)) });
         return reponse({ message: 'Inscription créée' }, 201);
       }
       return reponse({ error: `Requête inattendue : ${method} ${path}` }, 500);

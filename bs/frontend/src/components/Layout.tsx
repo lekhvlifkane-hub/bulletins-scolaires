@@ -229,8 +229,8 @@ export function Layout() {
   );
 
   return (
-    <SidebarProvider className="min-h-screen bg-background text-foreground">
-      <Sidebar collapsible="none" role="complementary" aria-label="Navigation de l’établissement" className="hidden min-h-screen bg-sidebar px-4 py-6 text-sidebar-foreground md:hidden lg:flex">
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
+      <Sidebar collapsible="none" role="complementary" aria-label="Navigation de l’établissement" className="hidden bg-sidebar px-4 py-6 text-sidebar-foreground md:hidden lg:flex">
         <SidebarHeader className="mb-7 flex-row items-center gap-3 border-b border-white/10 px-2 pb-5 pt-1">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm">
             <img
@@ -257,7 +257,7 @@ export function Layout() {
         </SidebarFooter>
       </Sidebar>
 
-      <div className="min-w-0 flex-1 overflow-x-clip">
+      <div className="h-full min-w-0 flex-1 overflow-x-clip overflow-y-auto">
         <header className="sticky top-0 z-20 border-b border-border/80 bg-card px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-h-11 items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
