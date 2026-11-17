@@ -50,6 +50,11 @@ app.use(
       callback(new HttpError(403, 'Origine non autorisée par CORS'));
     },
     credentials: true,
+    // Sans cette liste, un client cross-origin (app Tauri ↔ backend hébergé)
+    // ne peut pas lire ces en-têtes : le front en a besoin pour nommer le
+    // PDF téléchargé (Content-Disposition) et afficher son nombre de pages
+    // (X-Contenu-Pages).
+    exposedHeaders: ['Content-Disposition', 'X-Contenu-Pages'],
   }),
 );
 
