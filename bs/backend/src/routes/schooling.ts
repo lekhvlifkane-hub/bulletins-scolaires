@@ -287,7 +287,13 @@ router.get('/classroom-subjects', asyncHandler(async (req, res) => {
   const classroomId = typeof req.query.classroomId === 'string' ? req.query.classroomId : '';
   const rows = await prisma.classroomSubject.findMany({
     where: { schoolId, ...(classroomId ? { classroomId } : {}) },
-    include: { subject: true, classroom: true },
+    // Le front (page Matières) affiche classroom.level.name, classroom.series.name
+    // et classroom.academicYear.name : il faut donc inclure ces relations, sinon
+    // la page plante (« Cannot read properties of undefined »).
+    include: {
+      subject: true,
+      classroom: { include: { academicYear: true, level: true, series: true } },
+    },
     orderBy: [{ classroom: { name: 'asc' } }, { subject: { name: 'asc' } }],
   });
   res.json({

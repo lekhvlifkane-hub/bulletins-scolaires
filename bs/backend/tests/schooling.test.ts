@@ -1,7 +1,10 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
 import app from '../src/app';
 import { cleanTestDb, createSchool, createUser } from './helpers';
+import { prisma } from '../src/db/prisma';
+import { hashPassword } from '../src/lib/password';
 
 async function loginAs(email: string, password: string) {
   const agent = request.agent(app);
@@ -85,5 +88,67 @@ describe('Organisation scolaire', () => {
         endsAt: first.endsAt,
       });
     expect(outsideYear.status).toBe(400);
+  });
+
+  it('renvoie les affectations avec le niveau, la série et l’année de la classe (page Matières)', async () => {
+    const school = await createSchool();
+    await createUser({
+      email: 'matieres@test.sn',
+      password: 'MotDePasse123456',
+      role: 'SCHOOL_ADMIN',
+      schoolId: school.id,
+    });
+    const { agent, csrf } = await loginAs('matieres@test.sn', 'MotDePasse123456');
+
+    const annee = await prisma.academicYear.create({
+      data: {
+        schoolId: school.id,
+        name: '2026-2027',
+        startsAt: new Date('2026-10-01'),
+        endsAt: new Date('2027-07-31'),
+        status: 'ACTIVE',
+        semesters: {
+          create: [
+            { number: 1, name: 'Semestre 1', startsAt: new Date('2026-10-01'), endsAt: new Date('2027-02-28') },
+            { number: 2, name: 'Semestre 2', startsAt: new Date('2027-03-01'), endsAt: new Date('2027-07-31') },
+          ],
+        },
+      },
+    });
+    const niveau = await prisma.level.create({ data: { schoolId: school.id, name: 'Terminale S' } });
+    const classe = await prisma.classroom.create({
+      data: {
+        schoolId: school.id,
+        academicYearId: annee.id,
+        levelId: niveau.id,
+        name: 'TS 1',
+      },
+    });
+    const discipline = await prisma.subject.create({
+      data: { schoolId: school.id, name: 'Mathématiques', code: 'MATH' },
+    });
+    await prisma.classroomSubject.create({
+      data: {
+        schoolId: school.id,
+        classroomId: classe.id,
+        subjectId: discipline.id,
+        coefficient: new Prisma.Decimal('3'),
+      },
+    });
+
+    const response = await agent
+      .get('/api/schooling/classroom-subjects')
+      .set('x-csrf-token', csrf);
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.classroomSubjects).toHaveLength(1);
+    const affectation = response.body.classroomSubjects[0];
+    // Contrat attendu par la page Matières : sans ces champs, elle plante
+    // (« Cannot read properties of undefined (reading 'name') »).
+    expect(affectation.classroom.level.name).toBe('Terminale S');
+    expect(affectation.classroom.academicYear.name).toBe('2026-2027');
+    expect(affectation.classroom.series).toBeNull();
+    expect(affectation.subject.name).toBe('Mathématiques');
+    expect(affectation.coefficient).toBe('3');
   });
 });
