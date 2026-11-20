@@ -88,12 +88,13 @@ export async function preparerContexte(options: {
   enrollmentId: string;
   semesterId: string;
   dateCalcul?: Date;
+  resultats?: ResultatsClasse;
 }): Promise<ContexteBulletin> {
   const school = await chargerEtablissement(options.schoolId);
   const enrollment = await chargerInscription(options.schoolId, options.enrollmentId);
   const semestre = await chargerSemestre(options.schoolId, options.semesterId);
 
-  const resultats = await calculerResultatsClasse({
+  const resultats = options.resultats ?? await calculerResultatsClasse({
     schoolId: options.schoolId,
     classroomId: enrollment.classroomId,
     semesterId: options.semesterId,
@@ -112,7 +113,7 @@ export async function preparerContexte(options: {
 }
 
 /** Rang de l'élève dans une matière, calculé sur toute la classe (jamais dans le frontend). */
-function rangsParMatiere(resultats: ResultatsClasse, params: ParametresCalcul) {
+export function rangsParMatiere(resultats: ResultatsClasse, params: ParametresCalcul) {
   const subjectIds = new Set<string>();
   for (const e of resultats.eleves) for (const m of e.matieres) subjectIds.add(m.subjectId);
 
@@ -132,6 +133,8 @@ function rangsParMatiere(resultats: ResultatsClasse, params: ParametresCalcul) {
   }
   return parSujet;
 }
+
+export type RangsParMatiere = ReturnType<typeof rangsParMatiere>;
 
 /** Notes réellement retenues, par matière puis par catégorie, + code des disciplines. */
 async function notesRetenues(options: {
@@ -210,12 +213,14 @@ export async function construireSnapshot(options: {
   enrollmentId: string;
   semesterId: string;
   dateCalcul?: Date;
+  resultats?: ResultatsClasse;
+  rangs?: RangsParMatiere;
 }): Promise<SnapshotBulletin> {
   const ctx = await preparerContexte(options);
   const { resultats, eleve, school, enrollment, semestre } = ctx;
   const params = resultats.parametres;
 
-  const rangs = rangsParMatiere(resultats, params);
+  const rangs = options.rangs ?? rangsParMatiere(resultats, params);
   const { parSujet, parEvaluation, codes, enseignants } = await notesRetenues({
     schoolId: options.schoolId,
     classroomId: enrollment.classroomId,

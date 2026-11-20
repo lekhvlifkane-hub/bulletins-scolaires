@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Download, FileUp, Search, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { readSheet } from 'read-excel-file/browser';
-import writeXlsxFile from 'write-excel-file/browser';
 import { api } from '@/lib/api';
 import { telechargerPdf } from '@/lib/bulletins';
 import { Button } from '@/components/ui/button';
@@ -305,6 +303,7 @@ function parseStudentRows(rows: string[][]): ParsedRow[] {
 }
 
 export async function parseStudentXlsx(file: File): Promise<ParsedRow[]> {
+  const { readSheet } = await import('read-excel-file/browser');
   const sheet = await readSheet(file, 1);
   if (sheet.length - 1 > 500) throw new Error('Le fichier ne peut pas contenir plus de 500 élèves à importer.');
   const rows = sheet.map((row) => row.map((cell) => {
@@ -334,6 +333,7 @@ function downloadCsv(filename: string, rows: unknown[][]) {
 type ExcelCell = string | number | boolean | Date | null;
 
 async function downloadExcel(filename: string, rows: ExcelCell[][]) {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
   await writeXlsxFile(rows, { sheet: 'Élèves' }).toFile(filename);
 }
 
@@ -369,6 +369,7 @@ export function StudentsPage() {
   const [redoublantTransfert, setRedoublantTransfert] = useState(false);
   const [transfertEnCours, setTransfertEnCours] = useState(false);
   const [search, setSearch] = useState('');
+  const [searchDebouncee, setSearchDebouncee] = useState(search);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [form, setForm] = useState({ matricule: '', lastName: '', firstNames: '', birthDate: '' });
@@ -378,8 +379,16 @@ export function StudentsPage() {
   const [confirmMissingClasses, setConfirmMissingClasses] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async (query = search) => {
-    const response = await api.fetch(`/api/students${query ? `?search=${encodeURIComponent(query)}` : ''}`);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchDebouncee(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const load = useCallback(async (query: string, signal?: AbortSignal) => {
+    const response = await api.fetch(
+      `/api/students${query ? `?search=${encodeURIComponent(query)}` : ''}`,
+      { signal },
+    );
     const body = await lireReponse<{ students: Student[] }>(response, 'Impossible de charger les élèves');
     setStudents(body.students);
     // On retire de la sélection les élèves qui ne sont plus dans la liste.
@@ -388,11 +397,16 @@ export function StudentsPage() {
       const restantes = [...current].filter((id) => presentes.has(id));
       return restantes.length === current.size ? current : new Set(restantes);
     });
-  }, [search]);
+  }, []);
 
   useEffect(() => {
-    void load().catch((cause) => setError(cause instanceof Error ? cause.message : 'Erreur de chargement'));
-  }, [load]);
+    const controller = new AbortController();
+    void load(searchDebouncee, controller.signal).catch((cause: unknown) => {
+      if (cause instanceof DOMException && cause.name === 'AbortError') return;
+      setError(cause instanceof Error ? cause.message : 'Erreur de chargement');
+    });
+    return () => controller.abort();
+  }, [load, searchDebouncee]);
 
   // Les classes cibles du transfert : celles des années non clôturées.
   useEffect(() => {
@@ -435,7 +449,7 @@ export function StudentsPage() {
       await lireReponse(response, 'Impossible de créer l’élève');
       setForm({ matricule: '', lastName: '', firstNames: '', birthDate: '' });
       setMessage('Élève créé.');
-      await load();
+      await load(searchDebouncee);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossible de créer l’élève');
     }
@@ -491,7 +505,7 @@ export function StudentsPage() {
       setMessage(parties.join(' — '));
       setSelection(new Set());
       setRedoublantTransfert(false);
-      await load();
+      await load(searchDebouncee);
     } finally {
       setTransfertEnCours(false);
     }
@@ -625,7 +639,7 @@ const serverPreview = await lireReponse<{
       setPreview(null);
       setConfirmMissingClasses(false);
       if (fileInput.current) fileInput.current.value = '';
-      await load();
+      await load(searchDebouncee);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Import impossible');
     } finally {
@@ -896,9 +910,7 @@ const serverPreview = await lireReponse<{
           onSubmit={(event) => {
             event.preventDefault();
             setError(null);
-            void load().catch((cause) =>
-              setError(cause instanceof Error ? cause.message : 'Recherche impossible'),
-            );
+            setSearchDebouncee(search);
           }}
         >
           <label className="relative min-w-[220px] flex-1">

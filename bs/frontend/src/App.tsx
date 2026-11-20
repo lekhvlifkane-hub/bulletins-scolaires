@@ -1,38 +1,41 @@
+import { lazy, Suspense } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/LoginPage';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { ProfilePage } from '@/pages/ProfilePage';
-import { UsersPage } from '@/pages/UsersPage';
-import { SchoolsPage } from '@/pages/SchoolsPage';
-import { SchoolDetailPage } from '@/pages/SchoolDetailPage';
-import { SchoolSettingsPage } from '@/pages/SchoolSettingsPage';
-import { TemporaryAccessPage } from '@/pages/TemporaryAccessPage';
-import { AuditLogsPage } from '@/pages/AuditLogsPage';
-import { StudentsPage } from '@/pages/StudentsPage';
-import { ClassesPage } from '@/pages/ClassesPage';
-import { DisciplinesPage } from '@/pages/DisciplinesPage';
-import { EvaluationTypesPage } from '@/pages/EvaluationTypesPage';
-import { StudentDetailPage } from '@/pages/StudentDetailPage';
-import { NotesEntryPage } from '@/pages/NotesEntryPage';
-import { VerificationsPage } from '@/pages/VerificationsPage';
-import { CalculsPage } from '@/pages/CalculsPage';
-import { BulletinsPage } from '@/pages/BulletinsPage';
-import { BulletinDetailPage } from '@/pages/BulletinDetailPage';
-import { ComparaisonPage } from '@/pages/ComparaisonPage';
-import { BilanAnnuelPage } from '@/pages/BilanAnnuelPage';
-import { BilanAnnuelDetailPage } from '@/pages/BilanAnnuelDetailPage';
-import { NotFoundPage } from '@/pages/NotFoundPage';
-import { VieScolairePage } from '@/pages/VieScolairePage';
-import { SchoolRegistrationPage } from '@/pages/SchoolRegistrationPage';
-import { SchoolsPendingPage } from '@/pages/SchoolsPendingPage';
+
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const UsersPage = lazy(() => import('@/pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const SchoolsPage = lazy(() => import('@/pages/SchoolsPage').then((m) => ({ default: m.SchoolsPage })));
+const SchoolDetailPage = lazy(() => import('@/pages/SchoolDetailPage').then((m) => ({ default: m.SchoolDetailPage })));
+const SchoolSettingsPage = lazy(() => import('@/pages/SchoolSettingsPage').then((m) => ({ default: m.SchoolSettingsPage })));
+const TemporaryAccessPage = lazy(() => import('@/pages/TemporaryAccessPage').then((m) => ({ default: m.TemporaryAccessPage })));
+const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage').then((m) => ({ default: m.AuditLogsPage })));
+const StudentsPage = lazy(() => import('@/pages/StudentsPage').then((m) => ({ default: m.StudentsPage })));
+const ClassesPage = lazy(() => import('@/pages/ClassesPage').then((m) => ({ default: m.ClassesPage })));
+const DisciplinesPage = lazy(() => import('@/pages/DisciplinesPage').then((m) => ({ default: m.DisciplinesPage })));
+const EvaluationTypesPage = lazy(() => import('@/pages/EvaluationTypesPage').then((m) => ({ default: m.EvaluationTypesPage })));
+const StudentDetailPage = lazy(() => import('@/pages/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })));
+const NotesEntryPage = lazy(() => import('@/pages/NotesEntryPage').then((m) => ({ default: m.NotesEntryPage })));
+const VerificationsPage = lazy(() => import('@/pages/VerificationsPage').then((m) => ({ default: m.VerificationsPage })));
+const CalculsPage = lazy(() => import('@/pages/CalculsPage').then((m) => ({ default: m.CalculsPage })));
+const BulletinsPage = lazy(() => import('@/pages/BulletinsPage').then((m) => ({ default: m.BulletinsPage })));
+const BulletinDetailPage = lazy(() => import('@/pages/BulletinDetailPage').then((m) => ({ default: m.BulletinDetailPage })));
+const ComparaisonPage = lazy(() => import('@/pages/ComparaisonPage').then((m) => ({ default: m.ComparaisonPage })));
+const BilanAnnuelPage = lazy(() => import('@/pages/BilanAnnuelPage').then((m) => ({ default: m.BilanAnnuelPage })));
+const BilanAnnuelDetailPage = lazy(() => import('@/pages/BilanAnnuelDetailPage').then((m) => ({ default: m.BilanAnnuelDetailPage })));
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const VieScolairePage = lazy(() => import('@/pages/VieScolairePage').then((m) => ({ default: m.VieScolairePage })));
+const SchoolRegistrationPage = lazy(() => import('@/pages/SchoolRegistrationPage').then((m) => ({ default: m.SchoolRegistrationPage })));
+const SchoolsPendingPage = lazy(() => import('@/pages/SchoolsPendingPage').then((m) => ({ default: m.SchoolsPendingPage })));
 
 function App() {
   return (
     <AuthProvider>
       <HashRouter>
+        <Suspense fallback={<div className="p-6">Chargement…</div>}>
         <Routes>
           <Route path="/connexion" element={<LoginPage />} />
           <Route path="/inscription-etablissement" element={<SchoolRegistrationPage />} />
@@ -81,6 +84,7 @@ function App() {
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </Suspense>
       </HashRouter>
     </AuthProvider>
   );

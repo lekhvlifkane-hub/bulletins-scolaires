@@ -75,6 +75,24 @@ type SessionResponse = {
   csrfToken: string;
 };
 
+const CACHE_DUREE_MS = 30_000;
+const CHEMINS_CACHEES = new Set([
+  '/api/schooling/years',
+  '/api/schooling/levels',
+  '/api/schooling/series',
+  '/api/schooling/classes',
+  '/api/schooling/subjects',
+  '/api/schooling/classroom-subjects',
+  '/api/assessment-types',
+  '/api/schools',
+]);
+
+const cacheReferences = new Map<string, { expiration: number; reponse: Response }>();
+
+function estReference(chemin: string): boolean {
+  return CHEMINS_CACHEES.has(chemin.split('?')[0]);
+}
+
 class ApiClient {
   private csrfToken: string | null = null;
 
@@ -98,7 +116,20 @@ class ApiClient {
       headers.set('Content-Type', 'application/json');
     }
 
-    const response = await fetch(resoudreUrl(input), {
+    const url = resoudreUrl(input);
+    const cacheable = method === 'GET' && estReference(input) && import.meta.env.MODE !== 'test';
+
+    if (cacheable) {
+      const entre = cacheReferences.get(url);
+      if (entre && entre.expiration > Date.now() && typeof entre.reponse.clone === 'function') {
+        return entre.reponse.clone();
+      }
+      cacheReferences.delete(url);
+    } else if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      cacheReferences.clear();
+    }
+
+    const response = await fetch(url, {
       ...init,
       headers,
       credentials: 'include',
@@ -107,6 +138,13 @@ class ApiClient {
     const newCsrf = response.headers.get('X-CSRF-Token');
     if (newCsrf) {
       this.csrfToken = newCsrf;
+    }
+
+    if (cacheable && response.ok && typeof response.clone === 'function') {
+      cacheReferences.set(url, {
+        expiration: Date.now() + CACHE_DUREE_MS,
+        reponse: response.clone(),
+      });
     }
 
     return response;

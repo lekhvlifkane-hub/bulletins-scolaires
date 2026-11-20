@@ -4,7 +4,13 @@ import { prisma } from '../../db/prisma';
 import { HttpError } from '../../lib/http';
 import { writeAuditLog } from '../audit';
 import { appreciationMatiere, chargerReglesAppreciation } from '../appreciations';
-import { controlesSanitaire, construireSnapshot } from './construction';
+import { calculerResultatsClasse, type ResultatsClasse } from '../calcul/resultats';
+import {
+  controlesSanitaire,
+  construireSnapshot,
+  rangsParMatiere,
+  type RangsParMatiere,
+} from './construction';
 import type { SnapshotBulletin } from './types';
 
 /**
@@ -181,11 +187,15 @@ export async function genererBulletin(options: {
   semesterId: string;
   userId: string;
   req?: Request;
+  resultats?: ResultatsClasse;
+  rangs?: RangsParMatiere;
 }): Promise<{ card: ReportCard; cree: boolean }> {
   const snapshot = await construireSnapshot({
     schoolId: options.schoolId,
     enrollmentId: options.enrollmentId,
     semesterId: options.semesterId,
+    ...(options.resultats ? { resultats: options.resultats } : {}),
+    ...(options.rangs ? { rangs: options.rangs } : {}),
   });
   controlesSanitaire(snapshot);
 
@@ -286,6 +296,19 @@ export async function genererBulletinsClasse(options: {
     throw new HttpError(422, 'Aucun élève actif dans cette classe : aucun bulletin à générer');
   }
 
+  let resultats: ResultatsClasse | undefined;
+  let rangs: RangsParMatiere | undefined;
+  try {
+    resultats = await calculerResultatsClasse({
+      schoolId: options.schoolId,
+      classroomId: options.classroomId,
+      semesterId: options.semesterId,
+    });
+    rangs = rangsParMatiere(resultats, resultats.parametres);
+  } catch (erreur) {
+    if (!(erreur instanceof HttpError && erreur.status === 422)) throw erreur;
+  }
+
   let generes = 0;
   let maj = 0;
   const ignores: { enrollmentId: string; motif: string }[] = [];
@@ -298,6 +321,8 @@ export async function genererBulletinsClasse(options: {
         semesterId: options.semesterId,
         userId: options.userId,
         ...(options.req ? { req: options.req } : {}),
+        ...(resultats ? { resultats } : {}),
+        ...(rangs ? { rangs } : {}),
       });
       if (resultat.cree) generes += 1;
       else maj += 1;
