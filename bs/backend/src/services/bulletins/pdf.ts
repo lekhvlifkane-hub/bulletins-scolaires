@@ -835,9 +835,15 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
   const lignes: Cellule[][] = [];
   let parentAffiche: string | null = null;
   const matieres = [...s.matieres].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+  const idsParents = new Set(matieres.map((matiere) => matiere.parentId).filter(Boolean));
 
   for (const matiere of matieres) {
     const parent = matiere.parentName ?? (matiere.parentId ? 'Groupe' : null);
+    const groupeSansNotePropre =
+      idsParents.has(matiere.subjectId) &&
+      !matiere.comptabilisee &&
+      matiere.coefficientValide === false &&
+      (matiere.groupes ?? []).length === 0;
     if (parent && parentAffiche !== parent) {
       lignes.push([
         { texte: parent, style: 'gras' },
@@ -852,6 +858,7 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
       parentAffiche = parent;
     }
     if (!parent) parentAffiche = null;
+    if (groupeSansNotePropre) continue;
     lignes.push([
       { texte: parent ? `    ${matiere.subjectName}` : matiere.subjectName },
       { texte: deuxDecimales(moyenneGroupe(matiere, 'DEVOIR')), aligne: 'droite' },
