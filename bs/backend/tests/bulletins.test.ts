@@ -419,8 +419,8 @@ describe('Phase 5 — snapshot du bulletin', () => {
     // Aucun zéro isolé ne remplace une moyenne ; seuls les compteurs d'absences sont affichés.
     const emplacementsZero = pdf.journal.emplacements.filter((e) => /^0([.,]0+)?$/.test(e.texte.trim()));
     expect(emplacementsZero).toEqual([]);
-    expect(rendu).toContain('0 (0 min)');
-    expect(rendu).toContain('0 (dont 0 justifiées)');
+    expect(rendu).toContain('0 heure(s) 0 minute(s)');
+    expect(rendu).toContain('0 dont 0 justifiée(s)');
     expect(pdf.journal.tablesRejetes).toEqual([]);
     expect(pdf.journal.caracteresNonEncodes).toEqual([]);
   });

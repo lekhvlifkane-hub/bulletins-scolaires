@@ -283,11 +283,10 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     assertRenduSain(resultat.journal);
     const texte = texteDe(resultat.journal);
     expect(texte).toContain('République du Sénégal');
-    expect(texte).toContain("Ministère de l'Éducation nationale");
-    expect(texte).toContain('IEF THIÈS');
+    expect(texte).toContain("Ministère de l'Education nationale");
     expect(texte).toContain('BULLETIN DU PREMIER SEMESTRE');
     expect(texte).toContain('ANNEE SCOLAIRE : 2025-2026');
-    expect(texte).toContain('IEN (identifiant national)');
+    expect(texte).toContain('IEN');
     expect(texte).toContain('IEN-2026-001');
     expect(texte).toContain('Classe doublée (NEANT ou OUI)');
     expect(texte).toContain('Disciplines');

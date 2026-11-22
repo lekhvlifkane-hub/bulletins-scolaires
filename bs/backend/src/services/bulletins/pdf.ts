@@ -3,7 +3,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { HttpError } from '../../lib/http';
 import { formaterNote, type ModeArrondi } from '../calcul';
-import type { SnapshotBilanAnnuel, SnapshotBulletin } from './types';
+import type { ModeleOfficielSnapshot, SnapshotBilanAnnuel, SnapshotBulletin } from './types';
 
 /**
  * Génération PDF des bulletins (phase 5) — PDFKit, A4 portrait.
@@ -385,10 +385,20 @@ function tableau(
   titre: string,
   colonnes: Colonne[],
   lignes: Cellule[][],
-  options: { sansEnTete?: boolean; tete?: number } = {}
+  options: {
+    sansEnTete?: boolean;
+    tete?: number;
+    sansGrille?: boolean;
+    fondEntete?: string;
+    derniereGrise?: boolean;
+    x?: number;
+    largeur?: number;
+  } = {}
 ): void {
   const total = colonnes.reduce((somme, colonne) => somme + colonne.largeur, 0);
-  if (total > ZONE.largeur + 0.01) {
+  const x0 = options.x ?? ZONE.x;
+  const largeurTableau = options.largeur ?? ZONE.largeur;
+  if (total > largeurTableau + 0.01 || x0 + largeurTableau > ZONE.x + ZONE.largeur + 0.01) {
     plan.journal.tablesRejetes.push({ titre, largeur: total });
     ecrire(plan, `Mise en page refusée : le tableau « ${titre} » mesure ${total.toFixed(1)} pt.`, {
       style: 'gras',
@@ -399,7 +409,7 @@ function tableau(
   }
 
   const xs: number[] = [];
-  let curseur = ZONE.x;
+  let curseur = x0;
   for (const colonne of colonnes) {
     xs.push(curseur);
     curseur += colonne.largeur;
@@ -414,7 +424,8 @@ function tableau(
     );
     const hauteur =
       Math.max(...lignesTitres.map((l) => l.length), 1) * tete * INTERLIGNE + 2 * PADDING;
-    doc.rect(ZONE.x, plan.y, total, hauteur).fillAndStroke(COULEUR.fondFort, COULEUR.trait);
+    if (options.sansGrille) doc.rect(x0, plan.y, total, hauteur).fill(options.fondEntete ?? COULEUR.fondFort);
+    else doc.rect(x0, plan.y, total, hauteur).fillAndStroke(options.fondEntete ?? COULEUR.fondFort, COULEUR.trait);
     doc.lineWidth(0.5);
     colonnes.forEach((colonne, index) => {
       tracer(
@@ -443,9 +454,14 @@ function tableau(
     );
     const hauteur = Math.max(...hauteurs, tete * INTERLIGNE) + 2 * PADDING;
     veillerEspace(plan, hauteur);
-    doc
-      .rect(ZONE.x, plan.y, total, hauteur)
-      .fillAndStroke(rang % 2 === 0 ? '#ffffff' : COULEUR.fond, COULEUR.trait);
+    const dernier = rang === lignes.length - 1 && options.derniereGrise;
+    const fondLigne = dernier
+      ? COULEUR.fondFort
+      : rang % 2 === 0
+        ? '#ffffff'
+        : COULEUR.fond;
+    if (options.sansGrille) doc.rect(x0, plan.y, total, hauteur).fill(fondLigne);
+    else doc.rect(x0, plan.y, total, hauteur).fillAndStroke(fondLigne, COULEUR.trait);
     doc.lineWidth(0.5);
     for (let index = 0; index < colonnes.length; index += 1) {
       const colonne = colonnes[index];
@@ -480,13 +496,15 @@ function tableau(
         );
       }
     }
-    for (let index = 1; index < colonnes.length; index += 1) {
-      doc
-        .moveTo(xs[index], plan.y)
-        .lineTo(xs[index], plan.y + hauteur)
-        .lineWidth(0.4)
-        .strokeColor(COULEUR.trait)
-        .stroke();
+    if (!options.sansGrille) {
+      for (let index = 1; index < colonnes.length; index += 1) {
+        doc
+          .moveTo(xs[index], plan.y)
+          .lineTo(xs[index], plan.y + hauteur)
+          .lineWidth(0.4)
+          .strokeColor(COULEUR.trait)
+          .stroke();
+      }
     }
     doc.strokeColor(COULEUR.encre);
     plan.y += hauteur;
@@ -836,20 +854,11 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
     if (!parent) parentAffiche = null;
     lignes.push([
       { texte: parent ? `    ${matiere.subjectName}` : matiere.subjectName },
-      { texte: moyenneGroupe(matiere, 'DEVOIR'), aligne: 'centre' },
-      { texte: moyenneGroupe(matiere, 'COMPOSITION'), aligne: 'centre' },
-      {
-        texte: matiere.moyenneAffichee ?? 'Non calculable',
-        aligne: 'centre',
-        style: 'gras',
-        couleur: matiere.moyenneAffichee === null ? COULEUR.alerte : undefined,
-      },
-      {
-        texte: matiere.coefficient ?? '—',
-        aligne: 'centre',
-        couleur: matiere.coefficientValide ? undefined : COULEUR.alerte,
-      },
-      { texte: matiere.pointsPonderes ?? 'Non calculable', aligne: 'centre' },
+      { texte: deuxDecimales(moyenneGroupe(matiere, 'DEVOIR')), aligne: 'droite' },
+      { texte: deuxDecimales(moyenneGroupe(matiere, 'COMPOSITION')), aligne: 'droite' },
+      { texte: deuxDecimales(affiche(matiere.moyenneAffichee)), aligne: 'droite', style: 'gras' },
+      { texte: matiere.coefficient ?? '—', aligne: 'centre' },
+      { texte: deuxDecimales(matiere.pointsPonderes), aligne: 'droite' },
       { texte: rangMatiere(matiere), aligne: 'centre' },
       { texte: matiere.appreciation ?? '—' },
     ]);
@@ -859,14 +868,10 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
     { texte: 'TOTAUX', style: 'gras' },
     { texte: '' },
     { texte: '' },
-    { texte: affiche(s.synthese.moyenneGeneraleAffichee), aligne: 'centre', style: 'gras' },
+    { texte: '' },
     { texte: s.synthese.totalCoeficients, aligne: 'centre', style: 'gras' },
-    {
-      texte: sansMoyenne(s) ? 'Non calculable' : s.synthese.totalPoints,
-      aligne: 'centre',
-      style: 'gras',
-    },
-    { texte: s.synthese.rangAffiche ?? rangCellule(s.synthese.rang), aligne: 'centre', style: 'gras' },
+    { texte: deuxDecimales(s.synthese.totalPoints), aligne: 'droite', style: 'gras' },
+    { texte: '' },
     { texte: '' },
   ]);
   return lignes;
@@ -899,7 +904,7 @@ function moyenneAnnuelle(s: SnapshotBulletin): string {
   }
 }
 
-function dessinerBulletinOfficiel(
+function dessinerBulletinOfficielHistorique(
   plan: Plan,
   s: SnapshotBulletin,
   meta: MetaBulletin,
@@ -1254,6 +1259,541 @@ function dessinerBulletinOfficiel(
     plan.statuts[page - 1] = meta.statut;
   }
   void accent;
+}
+
+const CASES_OFFICIELLES_S1 = [
+  'Travail excellent',
+  'Satisfaisant doit continuer',
+  'Peut mieux faire',
+  'Insuffisant',
+  'Risque de redoubler',
+  "Risque l'exclusion",
+  'Félicitations',
+  'Encouragements',
+  "Tableau d'honneur",
+  'Passable',
+  'Doit redoubler d’effort',
+  'Avertissement',
+  'Blâme',
+];
+
+const CASES_OFFICIELLES_S2 = [
+  ['Félicitations', 'Encouragements', "Tableau d'honneur", 'Passable', 'Insuffisant'],
+  ['Passe en classe supérieure', 'Autorisé(e) à redoubler', "Exclu(e) de l'établissement"],
+];
+
+interface ChampOfficiel {
+  libelle: string;
+  valeur: string;
+}
+
+function deuxDecimales(valeur: string | null | undefined): string {
+  if (valeur === null || valeur === undefined || valeur === '') return '—';
+  const propre = valeur.trim();
+  if (!/^-?\d+(?:[.,]\d+)?$/.test(propre)) return valeur;
+  try {
+    return new Decimal(propre.replace(',', '.')).toFixed(2);
+  } catch {
+    return valeur;
+  }
+}
+
+function dateNaissance(iso: string | null): string {
+  const valeur = dateFr(iso, false);
+  return valeur === '—' ? valeur : valeur.replace(/\//g, '-');
+}
+
+function dureeRetards(minutes: number): string {
+  const heures = Math.floor(minutes / 60);
+  const reste = minutes % 60;
+  return `${heures} heure(s) ${reste} minute(s)`;
+}
+
+function ligneEpaisse(plan: Plan): void {
+  plan.doc
+    .moveTo(ZONE.x, plan.y)
+    .lineTo(ZONE.x + ZONE.largeur, plan.y)
+    .lineWidth(1.6)
+    .strokeColor('#000000')
+    .stroke();
+  plan.doc.strokeColor(COULEUR.encre);
+  plan.y += 5;
+}
+
+function souligner(
+  plan: Plan,
+  texte: string,
+  x: number,
+  largeur: number,
+  y: number,
+  taille: number
+): number {
+  const doc = plan.doc;
+  police(doc, 'gras', taille);
+  const lignes = decouper(doc, texte, largeur);
+  tracer(plan, lignes, x, largeur, y, 'gauche', 'gras', taille);
+  const derniere = lignes[lignes.length - 1] ?? '';
+  const mesure = doc.widthOfString(derniere);
+  const traitY = y + lignes.length * taille * INTERLIGNE + 1;
+  doc.moveTo(x, traitY).lineTo(x + mesure, traitY).lineWidth(0.7).strokeColor('#000000').stroke();
+  doc.strokeColor(COULEUR.encre);
+  return lignes.length * taille * INTERLIGNE + 2;
+}
+
+function coinsBloc(plan: Plan, x: number, y: number, largeur: number, hauteur: number): void {
+  const crochet = 10;
+  const segments: [number, number, number, number][] = [
+    [x, y, x + crochet, y],
+    [x, y, x, y + crochet],
+    [x + largeur - crochet, y, x + largeur, y],
+    [x + largeur, y, x + largeur, y + crochet],
+    [x, y + hauteur - crochet, x, y + hauteur],
+    [x, y + hauteur, x + crochet, y + hauteur],
+    [x + largeur - crochet, y + hauteur, x + largeur, y + hauteur],
+    [x + largeur, y + hauteur - crochet, x + largeur, y + hauteur],
+  ];
+  plan.doc.lineWidth(0.9).strokeColor('#000000');
+  segments.forEach(([x1, y1, x2, y2]) => {
+    plan.doc.moveTo(x1, y1).lineTo(x2, y2).stroke();
+  });
+  plan.doc.strokeColor(COULEUR.encre);
+}
+
+function tracerChamp(
+  plan: Plan,
+  x: number,
+  largeur: number,
+  y: number,
+  champ: ChampOfficiel,
+  taille: number
+): number {
+  const doc = plan.doc;
+  const prefixe = champ.libelle ? `${champ.libelle} : ` : '';
+  police(doc, 'normal', taille);
+  doc.fillColor(COULEUR.encre);
+  const largeurPrefixe = prefixe ? doc.widthOfString(prefixe) : 0;
+  if (prefixe) {
+    doc.text(prefixe, x, y, { lineBreak: false });
+    signaler(plan, x, y, largeurPrefixe, taille * INTERLIGNE, prefixe);
+  }
+  const largeurValeur = Math.max(largeur - largeurPrefixe, 8);
+  return tracer(
+    plan,
+    decouper(doc, champ.valeur, largeurValeur),
+    x + largeurPrefixe,
+    largeurValeur,
+    y,
+    'gauche',
+    'gras',
+    taille
+  );
+}
+
+function tracerChamps(
+  plan: Plan,
+  x: number,
+  largeur: number,
+  y: number,
+  champs: ChampOfficiel[],
+  taille: number
+): number {
+  const doc = plan.doc;
+  let curseur = x;
+  for (const champ of champs) {
+    const prefixe = champ.libelle ? `${champ.libelle} : ` : '';
+    police(doc, 'normal', taille);
+    doc.fillColor(COULEUR.encre);
+    const largeurPrefixe = prefixe ? doc.widthOfString(prefixe) : 0;
+    if (prefixe) {
+      doc.text(prefixe, curseur, y, { lineBreak: false });
+      signaler(plan, curseur, y, largeurPrefixe, taille * INTERLIGNE, prefixe);
+    }
+    police(doc, 'gras', taille);
+    const restant = Math.max(x + largeur - curseur - largeurPrefixe, 8);
+    const valeurX = curseur + largeurPrefixe;
+    const valeurLargeur = Math.min(doc.widthOfString(champ.valeur), restant);
+    doc.text(champ.valeur, valeurX, y, { lineBreak: false });
+    signaler(plan, valeurX, y, valeurLargeur, taille * INTERLIGNE, champ.valeur);
+    curseur = valeurX + valeurLargeur + 12;
+    if (curseur >= x + largeur) break;
+  }
+  return taille * INTERLIGNE;
+}
+
+function blocInfos(
+  plan: Plan,
+  x: number,
+  y: number,
+  largeur: number,
+  lignes: ChampOfficiel[][],
+  taille: number
+): number {
+  const hauteur = lignes.length * (taille * INTERLIGNE + 2) + 8;
+  coinsBloc(plan, x, y, largeur, hauteur);
+  let curseur = y + 4;
+  for (const ligne of lignes) {
+    curseur +=
+      ligne.length === 1
+        ? tracerChamp(plan, x + 6, largeur - 12, curseur, ligne[0], taille)
+        : tracerChamps(plan, x + 6, largeur - 12, curseur, ligne, taille);
+    curseur += 2;
+  }
+  return hauteur;
+}
+
+function bandeauGris(plan: Plan, texte: string, hauteur = 18): void {
+  plan.doc.rect(ZONE.x, plan.y, ZONE.largeur, hauteur).fill(COULEUR.fondFort);
+  tracer(plan, [texte], ZONE.x, ZONE.largeur, plan.y + 4, 'centre', 'gras', 9);
+  plan.y += hauteur;
+}
+
+function bandeauSynthese(plan: Plan, texte: string): void {
+  const doc = plan.doc;
+  police(doc, 'gras', 8);
+  const lignes = decouper(doc, texte, ZONE.largeur - 10);
+  const hauteur = lignes.length * 8 * INTERLIGNE + 6;
+  doc.rect(ZONE.x, plan.y, ZONE.largeur, hauteur).fill(COULEUR.fondFort);
+  tracer(plan, lignes, ZONE.x + 5, ZONE.largeur - 10, plan.y + 3, 'centre', 'gras', 8);
+  plan.y += hauteur;
+}
+
+function cadreOfficiel(
+  plan: Plan,
+  x: number,
+  y: number,
+  largeur: number,
+  hauteur: number,
+  titre: string,
+  contenu: string
+): void {
+  coinsBloc(plan, x, y, largeur, hauteur);
+  const hauteurTitre = souligner(plan, titre, x + 6, largeur - 12, y + 4, 8.2);
+  if (contenu) {
+    tracer(
+      plan,
+      decouper(plan.doc, contenu, largeur - 12),
+      x + 6,
+      largeur - 12,
+      y + 4 + hauteurTitre + 2,
+      'gauche',
+      'normal',
+      8
+    );
+  }
+}
+
+function casesOfficielles(plan: Plan, colonnes: string[][], largeurColonne: number): void {
+  const depart = plan.y;
+  const hauteurLigne = 10.5;
+  colonnes.forEach((liste, index) => {
+    const x = ZONE.x + index * largeurColonne;
+    liste.forEach((libelle, rang) => {
+      tracer(
+        plan,
+        [`[ ] ${libelle}`],
+        x + 2,
+        largeurColonne - 4,
+        depart + rang * hauteurLigne,
+        'gauche',
+        'normal',
+        TAILLE.petit
+      );
+    });
+  });
+  plan.y = depart + Math.max(...colonnes.map((liste) => liste.length)) * hauteurLigne;
+}
+
+function blocChef(plan: Plan, x: number, y: number, largeur: number): number {
+  const doc = plan.doc;
+  const hauteurTitre = souligner(plan, "Le Chef d'établissement", x, largeur, y, 8.2);
+  const ligneY = y + hauteurTitre + 32;
+  doc.moveTo(x, ligneY).lineTo(x + largeur * 0.55, ligneY).lineWidth(0.6).strokeColor('#000000').stroke();
+  doc
+    .moveTo(x + largeur * 0.6, ligneY)
+    .lineTo(x + largeur, ligneY)
+    .lineWidth(0.6)
+    .strokeColor('#000000')
+    .stroke();
+  doc.strokeColor(COULEUR.encre);
+  tracer(plan, ['Cachet'], x, largeur * 0.55, ligneY + 2, 'centre', 'normal', TAILLE.petit, COULEUR.doux);
+  tracer(
+    plan,
+    ['Signature'],
+    x + largeur * 0.6,
+    largeur * 0.4,
+    ligneY + 2,
+    'centre',
+    'normal',
+    TAILLE.petit,
+    COULEUR.doux
+  );
+  return hauteurTitre + 46;
+}
+
+function piedQrOfficiel(plan: Plan, modele: ModeleOfficielSnapshot): void {
+  const qrY = BAS_DE_ZONE - 54;
+  const taille = 40;
+  dessinerQr(plan, modele.qrInformations, ZONE.x, qrY, taille);
+  tracer(plan, ['Informations Élève'], ZONE.x, taille + 26, qrY + taille + 3, 'centre', 'normal', TAILLE.petit);
+  dessinerQr(plan, modele.qrBulletin, ZONE.x + ZONE.largeur - taille, qrY, taille);
+  tracer(
+    plan,
+    ['Ouvrir le bulletin'],
+    ZONE.x + ZONE.largeur - taille - 26,
+    taille + 26,
+    qrY + taille + 3,
+    'centre',
+    'normal',
+    TAILLE.petit
+  );
+}
+
+function dessinerBulletinOfficiel(
+  plan: Plan,
+  s: SnapshotBulletin,
+  meta: MetaBulletin,
+  textes: TextesLibres
+): void {
+  const debut = plan.page;
+  const modele = s.modeleOfficiel;
+  if (!modele) return;
+  const doc = plan.doc;
+  const haut = plan.y;
+
+  if (!dessinerImageDans(plan, s.enTete.drapeauDataUrl, ZONE.x, haut, 42, 25)) {
+    dessinerDrapeau(plan, ZONE.x, haut);
+  }
+  const ministereX = ZONE.x + ZONE.largeur - 64;
+  if (!dessinerImageDans(plan, s.enTete.logoMinistereDataUrl, ministereX, haut, 64, 30)) {
+    dessinerLogoMinistere(plan, ministereX, haut);
+  }
+  const centreX = ZONE.x + 50;
+  const centreLargeur = ZONE.largeur - 100;
+  tracer(plan, ['République du Sénégal'], centreX, centreLargeur, haut + 1, 'centre', 'gras', 8.5);
+  tracer(
+    plan,
+    ["Ministère de l'Education nationale"],
+    centreX,
+    centreLargeur,
+    haut + 12,
+    'centre',
+    'gras',
+    8.5
+  );
+  tracer(
+    plan,
+    decouper(doc, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), centreLargeur),
+    centreX,
+    centreLargeur,
+    haut + 23,
+    'centre',
+    'gras',
+    10.5
+  );
+  tracer(
+    plan,
+    [`ANNEE SCOLAIRE : ${s.enTete.anneeScolaire.nom}`],
+    centreX,
+    centreLargeur,
+    haut + 38,
+    'centre',
+    'gras',
+    8.5
+  );
+  plan.y = haut + 49;
+  ligneEpaisse(plan);
+
+  plan.y += 4;
+  const yBlocs = plan.y;
+  const largeurBloc = (ZONE.largeur - 12) / 2;
+  const blocGauche: ChampOfficiel[][] = [
+    [{ libelle: 'Tel', valeur: s.enTete.telephone ?? '—' }],
+    [{ libelle: 'Email', valeur: s.enTete.email ?? '—' }],
+    [{ libelle: 'Niveau', valeur: s.eleve.niveau ?? '—' }],
+    [{ libelle: 'Série (NON APPLICABLE)', valeur: s.eleve.serie ?? 'NON APPLICABLE' }],
+    [{ libelle: 'Effectif', valeur: String(s.synthese.effectif) }],
+    [{ libelle: 'Moyenne classe', valeur: affiche(s.synthese.moyenneClasseAffichee) }],
+  ];
+  const blocDroit: ChampOfficiel[][] = [
+    [
+      { libelle: 'IEN', valeur: s.eleve.ien ?? '—' },
+      { libelle: 'Sexe', valeur: s.eleve.sexe ?? '—' },
+    ],
+    [{ libelle: 'Classe', valeur: s.eleve.classe }],
+    [
+      {
+        libelle: 'Classe doublée (NEANT ou OUI)',
+        valeur: s.eleve.isRepeating ? 'OUI' : 'NEANT',
+      },
+    ],
+    [{ libelle: 'Prénom(s)', valeur: s.eleve.prenoms }],
+    [{ libelle: 'Nom', valeur: s.eleve.nom }],
+    [
+      { libelle: 'Né(e) le', valeur: dateNaissance(s.eleve.birthDate) },
+      { libelle: 'à', valeur: s.eleve.birthPlace ?? '—' },
+    ],
+  ];
+  const hauteurBloc = blocInfos(plan, ZONE.x, yBlocs, largeurBloc, blocGauche, 8);
+  blocInfos(plan, ZONE.x + largeurBloc + 12, yBlocs, largeurBloc, blocDroit, 8);
+  plan.y = yBlocs + hauteurBloc + 6;
+
+  bandeauGris(
+    plan,
+    s.enTete.semestre.numero === 1
+      ? 'BULLETIN DU PREMIER SEMESTRE'
+      : 'BULLETIN DU SECOND SEMESTRE'
+  );
+  plan.y += 4;
+
+  tableau(
+    plan,
+    'Disciplines',
+    [
+      { titre: 'Disciplines', largeur: 132 },
+      { titre: 'Devoirs', largeur: 44, aligne: 'droite' },
+      { titre: 'Compos', largeur: 44, aligne: 'droite' },
+      { titre: 'Moy', largeur: 40, aligne: 'droite' },
+      { titre: 'Coeff', largeur: 32, aligne: 'centre' },
+      { titre: 'Moy×Coef', largeur: 48, aligne: 'droite' },
+      { titre: 'Rang', largeur: 38, aligne: 'centre' },
+      { titre: 'Appréciations', largeur: ZONE.largeur - 378 },
+    ],
+    lignesMatieresOfficielles(s),
+    { sansGrille: true, fondEntete: COULEUR.fondFort, derniereGrise: true, tete: 7.4 }
+  );
+  plan.y += 3;
+
+  const absences = s.absences;
+  const retardsTexte = absences?.disponible
+    ? dureeRetards(absences.minutesRetard)
+    : 'Non renseigné';
+  const absencesTexte = absences?.disponible
+    ? `${absences.absencesTotal} dont ${absences.absencesJustifiees} justifiée(s)`
+    : 'Non renseigné';
+  bandeauSynthese(
+    plan,
+    `Moyenne : ${deuxDecimales(affiche(s.synthese.moyenneGeneraleAffichee))} | ` +
+      `Rang : ${s.synthese.rangAffiche ?? rangCellule(s.synthese.rang)} | ` +
+      `Retards : ${retardsTexte} | Absences : ${absencesTexte}`
+  );
+
+  if (s.synthese.incomplet || s.motifs.length > 0) {
+    const motif = s.motifs[0] ?? s.synthese.motifNonClasse;
+    ecrire(plan, motif ? `Bulletin incomplet — ${motif}` : 'Bulletin incomplet — données manquantes', {
+      taille: TAILLE.petit,
+      apres: 2,
+    });
+  }
+
+  if (s.enTete.semestre.numero === 2) {
+    const ySemestre = plan.y;
+    const largeurSemestre = 300;
+    const precedent = s.continuite.semestrePrecedent;
+    tableau(
+      plan,
+      'Semestres',
+      [
+        { titre: 'Moyennes', largeur: 140 },
+        { titre: 'Rangs', largeur: 60, aligne: 'centre' },
+        { titre: 'Moy classe', largeur: 100, aligne: 'centre' },
+      ],
+      [
+        [
+          { texte: 'Premier semestre' },
+          {
+            texte: precedent?.rang === null || precedent?.rang === undefined ? '—' : String(precedent.rang),
+            aligne: 'centre',
+          },
+          { texte: deuxDecimales(precedent?.moyenneGeneraleAffichee), aligne: 'centre' },
+        ],
+        [
+          { texte: 'Second semestre' },
+          { texte: s.synthese.rangAffiche ?? rangCellule(s.synthese.rang), aligne: 'centre' },
+          { texte: deuxDecimales(s.synthese.moyenneClasseAffichee), aligne: 'centre' },
+        ],
+        [
+          { texte: 'Moyenne générale', style: 'gras' },
+          { texte: '—', aligne: 'centre' },
+          { texte: moyenneAnnuelle(s), aligne: 'centre', style: 'gras' },
+        ],
+      ],
+      { x: ZONE.x, largeur: largeurSemestre, sansGrille: true, tete: 7.4 }
+    );
+    const hauteurSemestre = plan.y - ySemestre;
+    plan.y = ySemestre;
+    const xAbsences = ZONE.x + largeurSemestre + 10;
+    const largeurAbsences = ZONE.largeur - largeurSemestre - 10;
+    const hauteurAbsences = 62;
+    coinsBloc(plan, xAbsences, ySemestre, largeurAbsences, hauteurAbsences);
+    const hauteurTitre = souligner(
+      plan,
+      'Absences & Retards second semestre',
+      xAbsences + 6,
+      largeurAbsences - 12,
+      ySemestre + 4,
+      8.2
+    );
+    tracer(
+      plan,
+      [`Retards : ${retardsTexte}`],
+      xAbsences + 6,
+      largeurAbsences - 12,
+      ySemestre + 5 + hauteurTitre,
+      'gauche',
+      'normal',
+      8
+    );
+    tracer(
+      plan,
+      [`Absences : ${absencesTexte}`],
+      xAbsences + 6,
+      largeurAbsences - 12,
+      ySemestre + 17 + hauteurTitre,
+      'gauche',
+      'normal',
+      8
+    );
+    plan.y = ySemestre + Math.max(hauteurSemestre, hauteurAbsences) + 4;
+  }
+
+  ecrire(
+    plan,
+    `Décision proposée (à valider) : ${textes.decisionConseil ?? modele.decisionProposee ?? 'Non renseigné'}`,
+    { taille: 8, avant: 3, apres: 3 }
+  );
+
+  ecrire(plan, 'Cases à cocher (×)', { style: 'gras', taille: 8.2, apres: 2 });
+  if (s.enTete.semestre.numero === 1) {
+    casesOfficielles(
+      plan,
+      [CASES_OFFICIELLES_S1.slice(0, 6), CASES_OFFICIELLES_S1.slice(6)],
+      ZONE.largeur / 2
+    );
+  } else {
+    casesOfficielles(plan, CASES_OFFICIELLES_S2, ZONE.largeur / 2);
+  }
+  plan.y += 4;
+  cadreOfficiel(
+    plan,
+    ZONE.x,
+    plan.y,
+    ZONE.largeur,
+    54,
+    'Observations du conseil des professeurs',
+    modele.observationConseil ?? textes.appreciation ?? ''
+  );
+  plan.y += 58;
+  plan.y += blocChef(plan, ZONE.x, plan.y, ZONE.largeur);
+
+  piedQrOfficiel(plan, modele);
+
+  const etiquette = `${s.eleve.nom} ${s.eleve.prenoms} — ${s.eleve.matricule} — ${s.eleve.classe} — ${s.enTete.semestre.nom}`;
+  const mention = mentionDe(meta, s.genereLe);
+  for (let page = debut; page <= plan.page; page += 1) {
+    plan.etiquettes[page - 1] = etiquette;
+    plan.mentions[page - 1] = mention;
+    plan.statuts[page - 1] = meta.statut;
+  }
 }
 
 /** Une page par bulletin. Le contenu vient uniquement du snapshot et des colonnes texte. */
