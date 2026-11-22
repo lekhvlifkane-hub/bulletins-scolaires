@@ -10,7 +10,7 @@
  * et le PDF affiche « Non calculable » plutôt qu'un 0.
  */
 
-export const VERSION_SNAPSHOT = 1;
+export const VERSION_SNAPSHOT = 2;
 
 export type CategorieSnapshot = 'DEVOIR' | 'COMPOSITION' | 'AUTRE';
 
@@ -42,8 +42,14 @@ export interface GroupeSnapshot {
 
 export interface MatiereSnapshot {
   subjectId: string;
+  classroomSubjectId?: string;
   subjectName: string;
   subjectCode: string;
+  parentId?: string | null;
+  parentName?: string | null;
+  ordre?: number;
+  estSousMatiere?: boolean;
+  choixLibre?: boolean;
   teacherName?: string | null;
   coefficient: string | null;
   coefficientValide: boolean;
@@ -53,6 +59,7 @@ export interface MatiereSnapshot {
   moyenneAffichee: string | null;
   pointsPonderes: string | null;
   rang: number | null;
+  rangAffiche?: string;
   incomplet: boolean;
   motifs: string[];
   groupes: GroupeSnapshot[];
@@ -68,6 +75,7 @@ export interface SyntheseSnapshot {
   moyenneGeneraleExacte: string | null;
   moyenneGeneraleAffichee: string | null;
   rang: number | null;
+  rangAffiche?: string;
   motifNonClasse: string | null;
   effectif: number;
   moyenneClasse: string | null;
@@ -88,6 +96,13 @@ export interface EnTeteSnapshot {
   agrement: string | null;
   /** Logo figé dans le snapshot (data URL PNG/JPEG), absent des anciens bulletins. */
   logoDataUrl?: string | null;
+  modeleBulletin?: string;
+  couleurPrimaire?: string;
+  couleurSecondaire?: string;
+  couleurAccent?: string;
+  drapeauDataUrl?: string | null;
+  logoMinistereDataUrl?: string | null;
+  seuilPassage?: string;
   /** Noms figés pour les blocs de signature (absents des snapshots antérieurs). */
   chefEtablissement?: string | null;
   professeurPrincipal?: string | null;
@@ -105,6 +120,7 @@ export interface EleveSnapshot {
   classroomId: string;
   isRepeating?: boolean;
   matricule: string;
+  ien?: string | null;
   nom: string;
   prenoms: string;
   birthDate: string | null;
@@ -155,6 +171,18 @@ export interface SnapshotAbsences {
   minutesRetard: number;
 }
 
+export interface ModeleOfficielSnapshot {
+  titre: string;
+  district?: string | null;
+  inspection?: string | null;
+  casesS1: string[];
+  casesS2: string[];
+  qrInformations: string;
+  qrBulletin: string;
+  decisionProposee?: string | null;
+  observationConseil?: string | null;
+}
+
 export interface SnapshotBulletin {
   versionSchema: number;
   genereLe: string;
@@ -167,6 +195,7 @@ export interface SnapshotBulletin {
   continuite: ContinuiteSnapshot;
   /** Le module absences arrive en phase 6 : rien n'est simulé en attendant. */
   absences?: SnapshotAbsences;
+  modeleOfficiel?: ModeleOfficielSnapshot;
   mention?: string | null;
   appreciation?: string | null;
   /** Proposition indicative : la décision officielle reste celle validée par le conseil. */
@@ -189,6 +218,7 @@ export interface SnapshotBilanAnnuel {
     moyenneGenerale: string | null;
     moyenneGeneraleAffichee: string | null;
     rang: number | null;
+    rangAffiche?: string;
     effectif: number | null;
   }[];
   matieres: {
@@ -210,6 +240,7 @@ export interface SnapshotBilanAnnuel {
     calculable: boolean;
     partiel: boolean;
     rangAnnuel: number | null;
+    rangAnnuelAffiche?: string;
     effectif: number;
     motifs: string[];
   };

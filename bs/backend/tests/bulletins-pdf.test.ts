@@ -256,6 +256,52 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     expect(texte).toContain('Non renseigné');
   });
 
+  it('rend le modèle officiel Sénégal avec tableaux, cases et QR codes', async () => {
+    const s = snapshot({
+      enTete: {
+        ...snapshot().enTete,
+        modeleBulletin: 'OFFICIEL',
+        couleurPrimaire: '#0B2D4F',
+        couleurSecondaire: '#0B9B67',
+        couleurAccent: '#E5B544',
+      },
+      eleve: { ...snapshot().eleve, ien: 'IEN-2026-001' },
+      modeleOfficiel: {
+        titre: 'BULLETIN DU PREMIER SEMESTRE',
+        district: 'Thiès',
+        inspection: 'IEF Thiès',
+        casesS1: ['Travail excellent', 'Encouragements', 'Blâme'],
+        casesS2: ['Passe en classe supérieure'],
+        qrInformations: 'INFO:ELEVE:ELV-1',
+        qrBulletin: 'BULLETIN:enc-1:1',
+        observationConseil: 'Bon travail.',
+      },
+    });
+    const resultat = await genererPdfBulletin({ snapshot: s, meta: meta() });
+
+    expect(resultat.pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    assertRenduSain(resultat.journal);
+    const texte = texteDe(resultat.journal);
+    expect(texte).toContain('République du Sénégal');
+    expect(texte).toContain("Ministère de l'Éducation nationale");
+    expect(texte).toContain('IEF THIÈS');
+    expect(texte).toContain('BULLETIN DU PREMIER SEMESTRE');
+    expect(texte).toContain('ANNEE SCOLAIRE : 2025-2026');
+    expect(texte).toContain('IEN (identifiant national)');
+    expect(texte).toContain('IEN-2026-001');
+    expect(texte).toContain('Classe doublée (NEANT ou OUI)');
+    expect(texte).toContain('Disciplines');
+    expect(texte).toContain('Devoirs');
+    expect(texte).toContain('Compos');
+    expect(texte).toContain('Moy×Coef');
+    expect(texte).toContain('Rang');
+    expect(texte).toContain('[ ] Travail excellent');
+    expect(texte).toContain('[QR:INFO:ELEVE:ELV-1]');
+    expect(texte).toContain('[QR:BULLETIN:enc-1:1]');
+    expect(texte).toContain('Informations Élève');
+    expect(texte).toContain('Ouvrir le bulletin');
+  });
+
   it('imprime le logo figé dans le snapshot', async () => {
     const s = snapshot();
     s.enTete.logoDataUrl = LOGO_PNG;
@@ -387,6 +433,74 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     expect(texteDe(resultat.journal, 3)).toContain('Sow');
     expect(texteDe(resultat.journal, 1)).toContain('Page 1/3');
     expect(texteDe(resultat.journal, 3)).toContain('Page 3/3');
+  });
+
+  it('le lot officiel produit un seul PDF avec un bulletin par élève', async () => {
+    const items = ['Ndiaye', 'Diallo'].map((nom, index) => {
+      const s = snapshot({
+        enTete: { ...snapshot().enTete, modeleBulletin: 'OFFICIEL' },
+        eleve: { ...snapshot().eleve, nom, matricule: `ELV-${index + 1}` },
+        modeleOfficiel: {
+          titre: 'BULLETIN DU PREMIER SEMESTRE',
+          casesS1: ['Félicitations'],
+          casesS2: ['Passable'],
+          qrInformations: `INFO:ELEVE:ELV-${index + 1}`,
+          qrBulletin: `BULLETIN:enc-${index + 1}:1`,
+        },
+      });
+      return { snapshot: s, meta: meta({ statut: 'PUBLIE' }) };
+    });
+
+    const resultat = await genererPdfBulletins(items);
+    expect(resultat.pages).toBe(2);
+    assertRenduSain(resultat.journal);
+    expect(texteDe(resultat.journal, 1)).toContain('[QR:INFO:ELEVE:ELV-1]');
+    expect(texteDe(resultat.journal, 2)).toContain('[QR:INFO:ELEVE:ELV-2]');
+    expect(texteDe(resultat.journal, 2)).not.toContain('ELV-1');
+  });
+
+  it('le modèle officiel S2 affiche les trois moyennes et la décision proposée', async () => {
+    const s = snapshot({
+      enTete: {
+        ...snapshot().enTete,
+        modeleBulletin: 'OFFICIEL',
+        semestre: { id: 'sem-2', numero: 2, nom: 'Semestre 2' },
+      },
+      continuite: {
+        semestrePrecedent: {
+          reportCardId: 'rc-1',
+          version: 1,
+          numero: 1,
+          moyenneGenerale: '12.09',
+          moyenneGeneraleAffichee: '12.09',
+          rang: 4,
+          statut: 'PUBLIE',
+        },
+        changementClasse: false,
+        classePrecedente: null,
+      },
+      modeleOfficiel: {
+        titre: 'BULLETIN DU SECOND SEMESTRE',
+        casesS1: ['Félicitations'],
+        casesS2: ['Passe en classe supérieure', 'Autorisé(e) à redoubler'],
+        qrInformations: 'INFO:ELEVE:ELV-1',
+        qrBulletin: 'BULLETIN:enc-1:2',
+        decisionProposee: 'Passe en classe supérieure',
+        observationConseil: 'Continue ainsi.',
+      },
+    });
+    const resultat = await genererPdfBulletin({ snapshot: s, meta: meta() });
+
+    assertRenduSain(resultat.journal);
+    const texte = texteDe(resultat.journal);
+    expect(texte).toContain('BULLETIN DU SECOND SEMESTRE');
+    expect(texte).toContain('Premier semestre');
+    expect(texte).toContain('Second semestre');
+    expect(texte).toContain('Moyenne générale');
+    expect(texte).toContain('13.65');
+    expect(texte).toContain('Absences & Retards second semestre');
+    expect(texte).toContain('Décision proposée (à valider)');
+    expect(texte).toContain('Passe en classe supérieure');
   });
 
   it('signale les caractères qu’Helvetica ne peut pas imprimer', async () => {

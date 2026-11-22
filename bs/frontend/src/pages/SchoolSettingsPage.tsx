@@ -301,6 +301,185 @@ function AppreciationRulesSection() {
   );
 }
 
+type BulletinSettings = {
+  seuilPassage: string;
+  modeleBulletin: 'OFFICIEL' | 'SIMPLE';
+  couleurPrimaire: string;
+  couleurSecondaire: string;
+  couleurAccent: string;
+  drapeauDataUrl: string | null;
+  logoMinistereDataUrl: string | null;
+};
+
+const BULLETIN_SETTINGS_PAR_DEFAUT: BulletinSettings = {
+  seuilPassage: '10',
+  modeleBulletin: 'OFFICIEL',
+  couleurPrimaire: '#0B2D4F',
+  couleurSecondaire: '#0B9B67',
+  couleurAccent: '#E5B544',
+  drapeauDataUrl: null,
+  logoMinistereDataUrl: null,
+};
+
+async function lireImage(fichier: File | undefined): Promise<string | null> {
+  if (!fichier) return null;
+  if (!LOGO_TYPES.includes(fichier.type) || fichier.size > LOGO_MAX_BYTES) return null;
+  return new Promise<string>((resolve, reject) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => resolve(String(lecteur.result));
+    lecteur.onerror = () => reject(new Error('Impossible de lire le fichier'));
+    lecteur.readAsDataURL(fichier);
+  });
+}
+
+function BulletinSettingsSection() {
+  const [settings, setSettings] = useState<BulletinSettings>(BULLETIN_SETTINGS_PAR_DEFAUT);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let actif = true;
+    void api
+      .fetch('/api/schooling/bulletin-settings')
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(typeof body.error === 'string' ? body.error : 'Chargement impossible');
+        }
+        if (actif) {
+          setSettings((body.settings as BulletinSettings | undefined) ?? BULLETIN_SETTINGS_PAR_DEFAUT);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (actif) setError(cause instanceof Error ? cause.message : 'Chargement impossible');
+      })
+      .finally(() => {
+        if (actif) setLoading(false);
+      });
+    return () => {
+      actif = false;
+    };
+  }, []);
+
+  const enregistrer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await api.fetch('/api/schooling/bulletin-settings', {
+        method: 'PATCH',
+        body: JSON.stringify(settings),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof body.error === 'string' ? body.error : 'Enregistrement impossible');
+      }
+      setSettings((body.settings as BulletinSettings | undefined) ?? settings);
+      setMessage('Paramètres du bulletin officiel enregistrés.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Enregistrement impossible');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section titre="Bulletin officiel">
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {message ? <p role="status" className="text-sm text-emerald-700">{message}</p> : null}
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Chargement des paramètres…</p>
+      ) : (
+        <form onSubmit={(event) => void enregistrer(event)} className="grid gap-4 md:grid-cols-2">
+          <Champ label="Seuil de passage" aide="Moyenne annuelle à partir de laquelle la progression est proposée.">
+            <input
+              className={CLASSE_CHAMP}
+              type="number"
+              min="0"
+              max="20"
+              step="0.01"
+              value={settings.seuilPassage}
+              onChange={(event) => setSettings({ ...settings, seuilPassage: event.target.value })}
+              required
+            />
+          </Champ>
+          <Champ label="Modèle de bulletin">
+            <select
+              className={CLASSE_CHAMP}
+              value={settings.modeleBulletin}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  modeleBulletin: event.target.value as BulletinSettings['modeleBulletin'],
+                })
+              }
+            >
+              <option value="OFFICIEL">Modèle officiel Sénégal</option>
+              <option value="SIMPLE">Modèle simple</option>
+            </select>
+          </Champ>
+          <Champ label="Couleur principale">
+            <input
+              className="h-10 w-full rounded-md border border-input"
+              type="color"
+              value={settings.couleurPrimaire}
+              onChange={(event) => setSettings({ ...settings, couleurPrimaire: event.target.value })}
+            />
+          </Champ>
+          <Champ label="Couleur secondaire">
+            <input
+              className="h-10 w-full rounded-md border border-input"
+              type="color"
+              value={settings.couleurSecondaire}
+              onChange={(event) => setSettings({ ...settings, couleurSecondaire: event.target.value })}
+            />
+          </Champ>
+          <Champ label="Couleur d'accent">
+            <input
+              className="h-10 w-full rounded-md border border-input"
+              type="color"
+              value={settings.couleurAccent}
+              onChange={(event) => setSettings({ ...settings, couleurAccent: event.target.value })}
+            />
+          </Champ>
+          <Champ label="Drapeau (PNG ou JPEG)">
+            <input
+              className={CLASSE_CHAMP}
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(event) => {
+                void lireImage(event.target.files?.[0]).then((dataUrl) => {
+                  if (dataUrl) setSettings({ ...settings, drapeauDataUrl: dataUrl });
+                });
+              }}
+            />
+          </Champ>
+          <Champ label="Logo du Ministère (PNG ou JPEG)">
+            <input
+              className={CLASSE_CHAMP}
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(event) => {
+                void lireImage(event.target.files?.[0]).then((dataUrl) => {
+                  if (dataUrl) setSettings({ ...settings, logoMinistereDataUrl: dataUrl });
+                });
+              }}
+            />
+          </Champ>
+          <div className="md:col-span-2">
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer les paramètres du bulletin'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Section>
+  );
+}
+
 export function SchoolSettingsPage() {
   const { school, refresh } = useAuth();
   const [form, setForm] = useState<School>({
@@ -737,6 +916,7 @@ export function SchoolSettingsPage() {
         </div>
       </form>
       <AppreciationRulesSection />
+      <BulletinSettingsSection />
     </div>
   );
 }

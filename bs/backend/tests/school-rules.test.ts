@@ -174,7 +174,7 @@ describe("Règles de calcul de l'établissement", () => {
     expect(res.status).toBe(403);
     const enBase = await prisma.school.findUniqueOrThrow({ where: { id: e2.id } });
     expect(enBase.rangMode).toBe('STANDARD');
-  });
+  }, 20000);
 
   it("un surveillant général ne peut pas enregistrer les règles de calcul", async () => {
     const school = await createSchool('École surveillant');

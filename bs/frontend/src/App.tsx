@@ -16,6 +16,8 @@ const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage').then((m) => ({ 
 const StudentsPage = lazy(() => import('@/pages/StudentsPage').then((m) => ({ default: m.StudentsPage })));
 const ClassesPage = lazy(() => import('@/pages/ClassesPage').then((m) => ({ default: m.ClassesPage })));
 const DisciplinesPage = lazy(() => import('@/pages/DisciplinesPage').then((m) => ({ default: m.DisciplinesPage })));
+const SubjectTemplatesPage = lazy(() => import('@/pages/SubjectTemplatesPage').then((m) => ({ default: m.SubjectTemplatesPage })));
+const SubjectChoicesPage = lazy(() => import('@/pages/SubjectChoicesPage').then((m) => ({ default: m.SubjectChoicesPage })));
 const EvaluationTypesPage = lazy(() => import('@/pages/EvaluationTypesPage').then((m) => ({ default: m.EvaluationTypesPage })));
 const StudentDetailPage = lazy(() => import('@/pages/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })));
 const NotesEntryPage = lazy(() => import('@/pages/NotesEntryPage').then((m) => ({ default: m.NotesEntryPage })));
@@ -49,6 +51,8 @@ function App() {
               >
                 <Route path="/classes" element={<ClassesPage />} />
                 <Route path="/disciplines" element={<DisciplinesPage />} />
+                <Route path="/modeles-matieres" element={<SubjectTemplatesPage />} />
+                <Route path="/choix-matieres" element={<SubjectChoicesPage />} />
               </Route>
               <Route path="/eleves/:id" element={<StudentDetailPage />} />
               <Route

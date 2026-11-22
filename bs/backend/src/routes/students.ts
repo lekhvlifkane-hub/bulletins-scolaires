@@ -24,6 +24,7 @@ const studentSchema = z.object({
   address: z.string().trim().optional(),
   guardianName: z.string().trim().optional(),
   guardianPhone: z.string().trim().optional(),
+  ien: z.string().trim().max(60).nullable().optional(),
 });
 const studentCreateSchema = studentSchema.extend({
   matricule: z.string().trim().optional()
@@ -43,6 +44,43 @@ function memeJour(a: Date | null, b: Date): boolean {
 }
 router.use(requireAuth, requireRole('SCHOOL_ADMIN', 'SURVEILLANT_GENERAL', 'ASSISTANT'));
 
+/**
+ * @openapi
+ * /api/students:
+ *   get:
+ *     summary: Lister les élèves de l'établissement
+ *     tags: [Vie scolaire]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Recherche sur le matricule, le nom ou les prénoms
+ *     responses:
+ *       200: { description: Élèves avec leurs inscriptions actives }
+ *   post:
+ *     summary: Créer un élève
+ *     tags: [Vie scolaire]
+ *     description: >
+ *       Le matricule est généré s'il n'est pas fourni. Le champ `ien` (identifiant national,
+ *       60 caractères maximum) est facultatif et figure dans les bulletins officiels.
+ *       Jeton CSRF requis.
+ *     responses:
+ *       201: { description: Élève créé }
+ *       409: { description: Matricule déjà utilisé dans l'établissement }
+ * /api/students/{id}:
+ *   patch:
+ *     summary: Modifier un élève
+ *     tags: [Vie scolaire]
+ *     description: Le champ `ien` peut être renseigné, modifié ou remis à `null`.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Élève mis à jour }
+ *       404: { description: Élève introuvable }
+ */
 router.get('/', asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';

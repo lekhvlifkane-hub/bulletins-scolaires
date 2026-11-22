@@ -29,6 +29,11 @@ const options: swaggerJsdoc.Options = {
         description:
           'Absences, retards, appréciations, décisions validées du conseil, archives et historique des modifications.',
       },
+      {
+        name: 'Disciplines et réglages',
+        description:
+          'Matières par niveau, modèles appliqués aux classes, affectations discipline/classe, options des élèves et paramètres du bulletin officiel.',
+      },
     ],
   },
   apis: [

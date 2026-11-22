@@ -33,7 +33,15 @@ export interface EvaluationInput {
 
 export interface MatiereInput {
   subjectId: string;
+  classroomSubjectId?: string;
   subjectName?: string;
+  subjectCode?: string;
+  parentId?: string | null;
+  parentName?: string | null;
+  sortOrder?: number;
+  isGroup?: boolean;
+  estSousMatiere?: boolean;
+  choixLibre?: boolean;
   coefficient: string | number | null;
   evaluations: EvaluationInput[];
   /** false = matière affichée mais non comptabilisée (réglage établissement). */
@@ -119,6 +127,14 @@ export function formaterNote(
   return valeur.toDecimalPlaces(decimales, MODES_ARRONDI[mode]).toFixed(decimales);
 }
 
+export function arrondirNote(
+  valeur: Decimal | null | undefined,
+  p: Pick<ParametresCalcul, 'decimalsAffichage' | 'arrondi'> = DEFAULT_PARAMETRES
+): Decimal | null {
+  if (valeur === null || valeur === undefined) return null;
+  return valeur.toDecimalPlaces(p.decimalsAffichage, MODES_ARRONDI[p.arrondi]);
+}
+
 /** Une note comptabilisable : statut SAISIE (ou ABSENT si la règle de l'établissement le dit). */
 function valeurExploitable(note: NoteInput, p: ParametresCalcul): Decimal | null {
   if (note.status === 'ANNULEE' || note.status === 'NON_SAISIE') return null;
@@ -148,7 +164,15 @@ export interface GroupeResultat {
 
 export interface ResultatMatiere {
   subjectId: string;
+  classroomSubjectId?: string;
   subjectName?: string;
+  subjectCode?: string;
+  parentId?: string | null;
+  parentName?: string | null;
+  sortOrder?: number;
+  isGroup?: boolean;
+  estSousMatiere?: boolean;
+  choixLibre?: boolean;
   coefficient: Decimal | null;
   moyenne: Decimal | null;
   pointsPonderes: Decimal | null;
@@ -373,7 +397,8 @@ export function calculerResultatsEleve(
 
     let pointsPonderes: Decimal | null = null;
     if (comptabilisee && base.moyenne !== null && coefficient !== null) {
-      pointsPonderes = base.moyenne.mul(coefficient);
+      const moyenneArrondie = arrondirNote(base.moyenne, p)!;
+      pointsPonderes = moyenneArrondie.mul(coefficient);
       totalCoeficients = totalCoeficients.plus(coefficient);
       totalPoints = totalPoints.plus(pointsPonderes);
     } else if (comptabilisee && base.moyenne === null) {
@@ -384,7 +409,15 @@ export function calculerResultatsEleve(
     if (base.incomplet) incomplet = true;
     resultats.push({
       subjectId: matiere.subjectId,
+      classroomSubjectId: matiere.classroomSubjectId,
       subjectName: matiere.subjectName,
+      subjectCode: matiere.subjectCode,
+      parentId: matiere.parentId ?? null,
+      parentName: matiere.parentName ?? null,
+      sortOrder: matiere.sortOrder,
+      isGroup: matiere.isGroup ?? false,
+      estSousMatiere: matiere.estSousMatiere ?? Boolean(matiere.parentId),
+      choixLibre: matiere.choixLibre ?? false,
       coefficient,
       moyenne: base.moyenne,
       pointsPonderes,
@@ -429,7 +462,13 @@ export interface RangEleve {
   eleveId: string;
   moyenne: Decimal | null;
   rang: number | null;
+  exAequo: boolean;
   motifExclusion: string | null;
+}
+
+export function formaterRang(rang: number | null, exAequo = false): string {
+  if (rang === null) return 'Non classé';
+  return exAequo ? `${rang}ex` : String(rang);
 }
 
 /**
@@ -449,12 +488,18 @@ export function classerEleves(
 
   for (const e of eleves) {
     if (e.moyenne === null) {
-      nonClassables.push({ eleveId: e.eleveId, moyenne: null, rang: null, motifExclusion: 'moyenne non calculable' });
+      nonClassables.push({ eleveId: e.eleveId, moyenne: null, rang: null, exAequo: false, motifExclusion: 'moyenne non calculable' });
     } else if (e.incomplet && !p.classerResultatsIncomplets) {
-      nonClassables.push({ eleveId: e.eleveId, moyenne: e.moyenne, rang: null, motifExclusion: 'résultats incomplets' });
+      nonClassables.push({ eleveId: e.eleveId, moyenne: e.moyenne, rang: null, exAequo: false, motifExclusion: 'résultats incomplets' });
     } else {
       classables.push(e);
     }
+  }
+
+  const occurrences = new Map<string, number>();
+  for (const e of classables) {
+    const cle = e.moyenne!.toString();
+    occurrences.set(cle, (occurrences.get(cle) ?? 0) + 1);
   }
 
   const ordonnes = [...classables].sort((a, b) => b.moyenne!.cmp(a.moyenne!));
@@ -470,7 +515,13 @@ export function classerEleves(
       valeursUniques.push(e.moyenne!);
     }
     const rang = p.rangMode === 'dense' ? valeursUniques.length : rangCourant;
-    ranges.push({ eleveId: e.eleveId, moyenne: e.moyenne!, rang, motifExclusion: null });
+    ranges.push({
+      eleveId: e.eleveId,
+      moyenne: e.moyenne!,
+      rang,
+      exAequo: (occurrences.get(e.moyenne!.toString()) ?? 0) > 1,
+      motifExclusion: null,
+    });
   });
 
   return [...ranges, ...nonClassables];

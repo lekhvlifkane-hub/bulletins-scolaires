@@ -2,7 +2,7 @@ import type Decimal from 'decimal.js';
 import { prisma } from '../../db/prisma';
 import { HttpError } from '../../lib/http';
 import { resumeAbsences } from '../attendance';
-import { classerEleves, formaterNote, type ParametresCalcul } from '../calcul';
+import { classerEleves, formaterNote, formaterRang, type ParametresCalcul } from '../calcul';
 import { calculerResultatsClasse, type EleveResultat, type ResultatsClasse } from '../calcul/resultats';
 import {
   appreciationMatiere,
@@ -117,7 +117,7 @@ export function rangsParMatiere(resultats: ResultatsClasse, params: ParametresCa
   const subjectIds = new Set<string>();
   for (const e of resultats.eleves) for (const m of e.matieres) subjectIds.add(m.subjectId);
 
-  const parSujet = new Map<string, Map<string, { rang: number | null; motif: string | null }>>();
+  const parSujet = new Map<string, Map<string, { rang: number | null; rangAffiche: string; motif: string | null }>>();
   for (const subjectId of subjectIds) {
     const classement = classerEleves(
       resultats.eleves.map((e) => ({
@@ -127,8 +127,14 @@ export function rangsParMatiere(resultats: ResultatsClasse, params: ParametresCa
       })),
       params
     );
-    const map = new Map<string, { rang: number | null; motif: string | null }>();
-    for (const r of classement) map.set(r.eleveId, { rang: r.rang, motif: r.motifExclusion });
+    const map = new Map<string, { rang: number | null; rangAffiche: string; motif: string | null }>();
+    for (const r of classement) {
+      map.set(r.eleveId, {
+        rang: r.rang,
+        rangAffiche: formaterRang(r.rang, r.exAequo),
+        motif: r.motifExclusion,
+      });
+    }
     parSujet.set(subjectId, map);
   }
   return parSujet;
@@ -148,7 +154,7 @@ async function notesRetenues(options: {
     include: { subject: true },
   });
   const codes = new Map(affects.map((a) => [a.subjectId, a.subject.code]));
-  const enseignants = new Map(affects.map((a) => [a.subjectId, a.teacherName]));
+  const enseignants = new Map(affects.map((a) => [a.id, a.teacherName]));
 
   const assessments = await prisma.assessment.findMany({
     where: {
@@ -177,9 +183,9 @@ async function notesRetenues(options: {
 
   const parSujet = new Map<string, typeof assessments>();
   for (const a of assessments) {
-    const liste = parSujet.get(a.classroomSubject.subjectId) ?? [];
+    const liste = parSujet.get(a.classroomSubjectId) ?? [];
     liste.push(a);
-    parSujet.set(a.classroomSubject.subjectId, liste);
+    parSujet.set(a.classroomSubjectId, liste);
   }
 
   return { parSujet, parEvaluation, codes, enseignants };
@@ -242,7 +248,7 @@ export async function construireSnapshot(options: {
   const appreciationParMatiere = new Map(appreciations.map((entry) => [entry.subjectId, entry]));
 
   const matieres = eleve.matieres.map((matiere) => {
-    const evaluations = parSujet.get(matiere.subjectId) ?? [];
+    const evaluations = parSujet.get(matiere.classroomSubjectId ?? matiere.subjectId) ?? [];
     const groupes = CATEGORIES.map((category) => {
       const g = matiere.groupes.find((x) => x.category === category);
       if (!g) return null;
@@ -278,9 +284,17 @@ export async function construireSnapshot(options: {
 
     return {
       subjectId: matiere.subjectId,
+      classroomSubjectId: matiere.classroomSubjectId,
       subjectName: matiere.subjectName ?? '',
-      subjectCode: codes.get(matiere.subjectId) ?? '',
-      teacherName: enseignants.get(matiere.subjectId) ?? null,
+      subjectCode: matiere.subjectCode ?? codes.get(matiere.subjectId) ?? '',
+      parentId: matiere.parentId,
+      parentName: matiere.parentName,
+      ordre: matiere.sortOrder,
+      estSousMatiere: matiere.estSousMatiere,
+      choixLibre: matiere.choixLibre,
+      teacherName: matiere.classroomSubjectId
+        ? enseignants.get(matiere.classroomSubjectId) ?? null
+        : null,
       coefficient: exact(matiere.coefficient),
       coefficientValide: matiere.coefficient !== null && matiere.coefficient.gt(0),
       comptabilisee: matiere.comptabilisee,
@@ -289,6 +303,7 @@ export async function construireSnapshot(options: {
       moyenneAffichee: affiche(matiere.moyenne, params),
       pointsPonderes: exact(matiere.pointsPonderes),
       rang: rangMatiere?.rang ?? null,
+      rangAffiche: rangMatiere?.rangAffiche ?? formaterRang(rangMatiere?.rang ?? null),
       // Le drapeau du moteur signale une moyenne partiellement calculée. Pour le
       // bulletin, une matière sans moyenne du tout est tout aussi incomplète : il
       // faut l'afficher comme telle plutôt que de la laisser neutre.
@@ -350,6 +365,13 @@ export async function construireSnapshot(options: {
       email: school.email,
       agrement: school.accreditationNumber,
       logoDataUrl: school.logoDataUrl,
+      modeleBulletin: school.modeleBulletin,
+      couleurPrimaire: school.couleurPrimaire,
+      couleurSecondaire: school.couleurSecondaire,
+      couleurAccent: school.couleurAccent,
+      drapeauDataUrl: school.drapeauDataUrl,
+      logoMinistereDataUrl: school.logoMinistereDataUrl,
+      seuilPassage: school.seuilPassage.toString(),
       chefEtablissement: school.headmasterName,
       professeurPrincipal: enrollment.classroom.mainTeacherName,
       autorite: null,
@@ -368,6 +390,7 @@ export async function construireSnapshot(options: {
       classroomId: enrollment.classroomId,
       isRepeating: enrollment.isRepeating,
       matricule: enrollment.student.matricule,
+      ien: enrollment.student.ien,
       nom: enrollment.student.lastName,
       prenoms: enrollment.student.firstNames,
       birthDate: dateIso(enrollment.student.birthDate),
@@ -404,6 +427,7 @@ export async function construireSnapshot(options: {
       moyenneGeneraleExacte: exact(eleve.moyenneGenerale),
       moyenneGeneraleAffichee: affiche(eleve.moyenneGenerale, params),
       rang: eleve.rang,
+      rangAffiche: eleve.rangAffiche,
       motifNonClasse: eleve.motifNonClasse,
       effectif: resultats.effectif,
       moyenneClasse: exact(resultats.moyenneClasse),
@@ -430,6 +454,43 @@ export async function construireSnapshot(options: {
       classePrecedente: snapshotPrecedent?.eleve.classe ?? null,
     },
     absences,
+    modeleOfficiel: {
+      titre:
+        semestre.number === 1
+          ? 'BULLETIN DU PREMIER SEMESTRE'
+          : 'BULLETIN DU SECOND SEMESTRE',
+      district: school.iefName,
+      inspection: school.officialName ?? school.name,
+      casesS1: [
+        'Travail excellent',
+        'Satisfaisant doit continuer',
+        'Peut mieux faire',
+        'Insuffisant',
+        'Risque de redoubler',
+        "Risque l'exclusion",
+        'Félicitations',
+        'Encouragements',
+        "Tableau d'honneur",
+        'Passable',
+        'Doit redoubler d’effort',
+        'Avertissement',
+        'Blâme',
+      ],
+      casesS2: [
+        'Félicitations',
+        'Encouragements',
+        "Tableau d'honneur",
+        'Passable',
+        'Insuffisant',
+        'Passe en classe supérieure',
+        'Autorisé(e) à redoubler',
+        "Exclu(e) de l'établissement",
+      ],
+      qrInformations: `INFO:ELEVE:${enrollment.student.matricule}`,
+      qrBulletin: `BULLETIN:${enrollment.id}:${semestre.number}`,
+      decisionProposee: appreciationGenerale.decision,
+      observationConseil: appreciationGenerale.appreciation,
+    },
     mention: appreciationGenerale.mention,
     appreciation: appreciationGenerale.appreciation,
     decisionProposee: appreciationGenerale.decision,

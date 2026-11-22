@@ -20,6 +20,7 @@ export async function cleanTestDb() {
     prisma.grade.deleteMany(),
     prisma.assessment.deleteMany(),
     prisma.assessmentType.deleteMany(),
+    prisma.studentSubjectChoice.deleteMany(),
     prisma.classroomSubject.deleteMany(),
     prisma.enrollment.deleteMany(),
     prisma.subject.deleteMany(),

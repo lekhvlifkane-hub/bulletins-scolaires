@@ -6,6 +6,7 @@ import {
   calculerMoyenneAnnuelle,
   calculerResultatsEleve,
   formaterNote,
+  formaterRang,
   type MatiereInput,
   type ParametresCalcul,
   type ResultatEleve,
@@ -26,6 +27,8 @@ export interface EleveResultat {
   totalCoeficients: Decimal;
   incomplet: boolean;
   rang: number | null;
+  rangAffiche: string;
+  exAequo: boolean;
   motifNonClasse: string | null;
   matieres: ResultatMatiere[];
   moyennesParMatiere: Record<string, Decimal | null>;
@@ -111,7 +114,7 @@ export async function calculerResultatsClasse(options: {
 
   const classroomSubjects = await prisma.classroomSubject.findMany({
     where: { schoolId: options.schoolId, classroomId: options.classroomId },
-    include: { subject: true },
+    include: { subject: { include: { parent: true } } },
   });
   if (classroomSubjects.length === 0) {
     throw new HttpError(422, 'Aucune discipline affectée à cette classe : rien à calculer');
@@ -164,6 +167,12 @@ export async function calculerResultatsClasse(options: {
     notesParCle.set(`${grade.assessmentId}|${grade.enrollmentId}`, grade);
   }
 
+  const choix = await prisma.studentSubjectChoice.findMany({
+    where: { schoolId: options.schoolId, enrollmentId: { in: enrollmentIds } },
+    include: { subject: { include: { parent: true } } },
+  });
+  const choixParInscription = new Map(choix.map((entry) => [entry.enrollmentId, entry.subject]));
+
   const params = parametresEtablissement(school, {
     dateCalcul,
     ...(options.overrides ?? {}),
@@ -190,35 +199,49 @@ export async function calculerResultatsClasse(options: {
   const eleves: EleveResultat[] = [];
 
   for (const enrollment of enrollments) {
-    const matieres: MatiereInput[] = currentClassroomSubjects.map((cs) => ({
-      subjectId: cs.subjectId,
-      subjectName: cs.subject.name,
-      coefficient: decimalVersChaine(cs.coefficient),
-      effectiveFrom: cs.effectiveFrom,
-      effectiveTo: cs.effectiveTo,
-      evaluations: assessments
-        .filter(
-          (assessment) =>
-            classroomSubjectsById.get(assessment.classroomSubjectId)?.subjectId === cs.subjectId,
-        )
-        .map((a) => {
-          const grade = notesParCle.get(`${a.id}|${enrollment.id}`);
-          return {
-            assessmentId: a.id,
-            category: a.type.category,
-            notes: [
-              grade
-                ? {
-                    status: grade.status,
-                    score: grade.score === null ? null : decimalVersChaine(grade.score),
-                    outOf: decimalVersChaine(a.outOf) ?? undefined,
-                  }
-                : { status: 'NON_SAISIE' as const, score: null },
-            ],
-          };
-        }),
-    }));
+    const matieres: MatiereInput[] = currentClassroomSubjects
+      .filter((cs) => cs.isActive !== false)
+      .map((cs) => {
+        const choixEleve = cs.subject.isChoice ? choixParInscription.get(enrollment.id) : undefined;
+        const affiche = choixEleve ?? cs.subject;
+        return {
+          subjectId: affiche.id,
+          classroomSubjectId: cs.id,
+          subjectName: affiche.name,
+          subjectCode: affiche.code,
+          parentId: affiche.parentId,
+          parentName: affiche.parent?.name ?? null,
+          sortOrder: cs.sortOrder || affiche.sortOrder,
+          estSousMatiere: affiche.parentId !== null,
+          choixLibre: cs.subject.isChoice,
+          coefficient: decimalVersChaine(cs.coefficient),
+          effectiveFrom: cs.effectiveFrom,
+          effectiveTo: cs.effectiveTo,
+          evaluations: assessments
+            .filter(
+              (assessment) =>
+                classroomSubjectsById.get(assessment.classroomSubjectId)?.subjectId === cs.subjectId,
+            )
+            .map((a) => {
+              const grade = notesParCle.get(`${a.id}|${enrollment.id}`);
+              return {
+                assessmentId: a.id,
+                category: a.type.category,
+                notes: [
+                  grade
+                    ? {
+                        status: grade.status,
+                        score: grade.score === null ? null : decimalVersChaine(grade.score),
+                        outOf: decimalVersChaine(a.outOf) ?? undefined,
+                      }
+                    : { status: 'NON_SAISIE' as const, score: null },
+                ],
+              };
+            }),
+        };
+      });
 
+    matieres.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     const resultat: ResultatEleve = calculerResultatsEleve(matieres, params);
     const moyennesParMatiere: Record<string, Decimal | null> = {};
     for (const m of resultat.matieres) {
@@ -236,6 +259,8 @@ export async function calculerResultatsClasse(options: {
       totalCoeficients: resultat.totalCoeficients,
       incomplet: resultat.incomplet,
       rang: null,
+      rangAffiche: 'Non classé',
+      exAequo: false,
       motifNonClasse: null,
       matieres: resultat.matieres,
       moyennesParMatiere,
@@ -250,6 +275,8 @@ export async function calculerResultatsClasse(options: {
     const eleve = eleves.find((e) => e.enrollmentId === rangee.eleveId);
     if (eleve) {
       eleve.rang = rangee.rang;
+      eleve.exAequo = rangee.exAequo;
+      eleve.rangAffiche = formaterRang(rangee.rang, rangee.exAequo);
       eleve.motifNonClasse = rangee.motifExclusion;
     }
   }

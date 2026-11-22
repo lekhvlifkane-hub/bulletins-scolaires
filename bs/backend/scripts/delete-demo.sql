@@ -1,0 +1,15 @@
+DELETE FROM "ReportCard" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "AnnualSummary" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Grade" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Enrollment" WHERE "studentId" IN (SELECT "id" FROM "Student" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%'));
+DELETE FROM "Assessment" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "ClassroomSubject" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Student" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Classroom" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Semester" WHERE "academicYearId" IN (SELECT "id" FROM "AcademicYear" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%'));
+DELETE FROM "AcademicYear" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Level" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "Subject" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "AssessmentType" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "User" WHERE "schoolId" IN (SELECT "id" FROM "School" WHERE name LIKE '%FICTIF%');
+DELETE FROM "School" WHERE name LIKE '%FICTIF%';

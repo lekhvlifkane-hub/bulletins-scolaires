@@ -1,10 +1,10 @@
-import type Decimal from 'decimal.js';
+import Decimal from 'decimal.js';
 import { Prisma } from '@prisma/client';
 import type { AnnualSummary, ReportCard } from '@prisma/client';
 import type { Request } from 'express';
 import { prisma } from '../../db/prisma';
 import { HttpError } from '../../lib/http';
-import { calculerMoyenneAnnuelle, classerEleves, formaterNote, type ParametresCalcul } from '../calcul';
+import { calculerMoyenneAnnuelle, classerEleves, formaterNote, formaterRang, type ParametresCalcul } from '../calcul';
 import { parametresEtablissement } from '../calcul/etablissement';
 import { calculerResultatsClasse } from '../calcul/resultats';
 import { writeAuditLog } from '../audit';
@@ -40,6 +40,7 @@ export interface BilanSemestre {
   moyenneGenerale: string | null;
   moyenneGeneraleAffichee: string | null;
   rang: number | null;
+  rangAffiche?: string;
   effectif: number | null;
 }
 
@@ -176,6 +177,13 @@ export async function construireSnapshotAnnuel(options: {
     params
   );
   const monClassement = classement.find((r) => r.eleveId === options.enrollmentId);
+  const seuilPassage = new Decimal(school.seuilPassage.toString());
+  const decisionProposee =
+    annuelle.moyenne === null
+      ? 'Décision non calculable'
+      : annuelle.moyenne.gte(seuilPassage)
+        ? 'Passe en classe supérieure'
+        : 'Autorisé(e) à redoubler';
 
   const bilanSemestres: BilanSemestre[] = [];
   for (const [index, semestre] of semestres.entries()) {
@@ -195,6 +203,7 @@ export async function construireSnapshotAnnuel(options: {
         params.arrondi
       ),
       rang: eleve.rang,
+      rangAffiche: eleve.rangAffiche,
       effectif: resultats.effectif,
     });
   }
@@ -298,6 +307,7 @@ export async function construireSnapshotAnnuel(options: {
       calculable: annuelle.calculable,
       partiel: annuelle.partiel,
       rangAnnuel: monClassement?.rang ?? null,
+      rangAnnuelAffiche: formaterRang(monClassement?.rang ?? null, monClassement?.exAequo),
       effectif: resultatsS1.eleves.length,
       motifs: motifsAnnuels(annuelle, bilanSemestres, params),
     },
@@ -305,7 +315,7 @@ export async function construireSnapshotAnnuel(options: {
     // Textes libres : ils vivent en colonnes de l'AnnualSummary, jamais dans le calcul.
     appreciation: textesGeneres.appreciation,
     mention: textesGeneres.mention,
-    decisionProposee: textesGeneres.decision,
+    decisionProposee: decisionProposee,
     decisionConseil: decisionValidee?.content ?? null,
     decisionConseilValideeLe: decisionValidee?.validatedAt?.toISOString() ?? null,
   };

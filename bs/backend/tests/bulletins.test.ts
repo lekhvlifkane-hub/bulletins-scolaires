@@ -78,7 +78,7 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(card.appreciationAuto).toBe(true);
 
     const snapshot = lireSnapshot(card);
-    expect(snapshot.versionSchema).toBe(1);
+    expect(snapshot.versionSchema).toBe(2);
     expect(snapshot.enTete.nomEtablissement).toBe('Lycée de Touba Toul');
     expect(snapshot.enTete.anneeScolaire.nom).toBe('2025-2026');
     expect(snapshot.enTete.semestre.numero).toBe(1);
@@ -416,15 +416,11 @@ describe('Phase 5 — snapshot du bulletin', () => {
     // l'évaluation absente d'histoire apparaît comme telle, pas comme un zéro
     expect(rendu).toContain('ABS');
     expect(rendu).toContain('Bulletin incomplet');
-    // Les seuls zéros isolés de ce PDF sont les deux compteurs d'absences.
+    // Aucun zéro isolé ne remplace une moyenne ; seuls les compteurs d'absences sont affichés.
     const emplacementsZero = pdf.journal.emplacements.filter((e) => /^0([.,]0+)?$/.test(e.texte.trim()));
-    const lignesAbsences = pdf.journal.emplacements.filter((e) =>
-      /^Absences (justifiées|non justifiées)$/.test(e.texte.trim())
-    );
-    expect(emplacementsZero).toHaveLength(2);
-    expect(emplacementsZero.every((zero) =>
-      lignesAbsences.some((libelle) => Math.abs(libelle.y - zero.y) < 0.01)
-    )).toBe(true);
+    expect(emplacementsZero).toEqual([]);
+    expect(rendu).toContain('0 (0 min)');
+    expect(rendu).toContain('0 (dont 0 justifiées)');
     expect(pdf.journal.tablesRejetes).toEqual([]);
     expect(pdf.journal.caracteresNonEncodes).toEqual([]);
   });
@@ -467,7 +463,7 @@ describe('Phase 5 — snapshot du bulletin', () => {
     expect(bilan.matieres.find((m) => m.subjectName === 'Mathématiques')?.annuelle).toBe('17.5');
     expect(bilan.mention).toBe('Très bien');
     expect(bilan.appreciation).toContain('Eleve');
-    expect(bilan.decisionProposee).toBe('Félicitations');
+    expect(bilan.decisionProposee).toBe('Passe en classe supérieure');
     expect(bilan.decisionConseil).toBeNull();
 
     const { summary } = await genererBilanAnnuel({

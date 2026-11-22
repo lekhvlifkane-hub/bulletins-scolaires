@@ -472,7 +472,7 @@ router.delete('/assessments/:id', requireCsrf, asyncHandler(async (req, res) => 
  *         required: true
  *         schema: { type: string }
  *     responses:
- *       200: { description: Colonnes, notes, moyenne de matière et appréciation automatique }
+ *       200: { description: Colonnes, notes, moyenne de matière, appréciation automatique et matière parente }
  *       400: { description: Paramètres manquants ou semestre hors de l'année de la classe }
  *       404: { description: Discipline ou semestre hors de l'établissement }
  */
@@ -488,7 +488,7 @@ router.get('/grade-sheet', asyncHandler(async (req, res) => {
   const [classroomSubject, semester, school] = await Promise.all([
     prisma.classroomSubject.findFirst({
       where: { id: classroomSubjectId, schoolId },
-      include: { subject: true, classroom: true },
+      include: { subject: { include: { parent: true } }, classroom: true },
     }),
     prisma.semester.findFirst({
       where: { id: semesterId, academicYear: { schoolId, deletedAt: null } },
@@ -563,6 +563,9 @@ router.get('/grade-sheet', asyncHandler(async (req, res) => {
         id: classroomSubject.subject.id,
         name: classroomSubject.subject.name,
         code: classroomSubject.subject.code,
+        parent: classroomSubject.subject.parent
+          ? { id: classroomSubject.subject.parent.id, name: classroomSubject.subject.parent.name }
+          : null,
       },
       classroom: {
         id: classroomSubject.classroom.id,
@@ -831,7 +834,7 @@ router.put('/grades', requireCsrf, asyncHandler(async (req, res) => {
  *         schema: { type: boolean, default: false }
  *         description: Prévisualisation ; le calcul officiel ignore les évaluations non validées
  *     responses:
- *       200: { description: Résultats par élève et par matière, valeur exacte et valeur affichée }
+ *       200: { description: "Résultats par élève et par matière, valeur exacte et affichée, rangs ex æquo, hiérarchie des matières (parentId, parentName, estSousMatiere), ordre, devoirs et compositions" }
  *       404: { description: Classe hors de l'établissement }
  *       422: { description: Classe sans élève actif ou sans discipline }
  * /api/calculations/annual:
@@ -887,11 +890,29 @@ router.get('/calculations', asyncHandler(async (req, res) => {
       totalPoints: e.totalPoints.toString(),
       totalCoeficients: e.totalCoeficients.toString(),
       rang: e.rang,
+      rangAffiche: e.rangAffiche,
       motifNonClasse: e.motifNonClasse,
       incomplet: e.incomplet,
       matieres: e.matieres.map((m) => ({
         subjectId: m.subjectId,
+        classroomSubjectId: m.classroomSubjectId,
         subjectName: m.subjectName,
+        subjectCode: m.subjectCode,
+        parentId: m.parentId,
+        parentName: m.parentName,
+        ordre: m.sortOrder,
+        estSousMatiere: m.estSousMatiere,
+        choixLibre: m.choixLibre,
+        devoirs: formaterNote(
+          m.groupes.find((groupe) => groupe.category === 'DEVOIR')?.moyenne ?? null,
+          params.decimalsAffichage,
+          params.arrondi
+        ),
+        compos: formaterNote(
+          m.groupes.find((groupe) => groupe.category === 'COMPOSITION')?.moyenne ?? null,
+          params.decimalsAffichage,
+          params.arrondi
+        ),
         coefficient: m.coefficient?.toString() ?? null,
         moyenne: formaterNote(m.moyenne, params.decimalsAffichage, params.arrondi),
         moyenneExacte: m.moyenne?.toString() ?? null,

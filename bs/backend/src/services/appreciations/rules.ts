@@ -24,14 +24,15 @@ export interface DefaultRule {
 }
 
 const SUBJECT_LABELS: { code: string; label: string; min: string; max: string; order: number }[] = [
-  { code: '0_5', label: 'Très faible', min: '0', max: '5', order: 1 },
-  { code: '5_8', label: 'Faible', min: '5', max: '8', order: 2 },
-  { code: '8_10', label: 'Insuffisant', min: '8', max: '10', order: 3 },
-  { code: '10_12', label: 'Passable', min: '10', max: '12', order: 4 },
-  { code: '12_14', label: 'Assez bien', min: '12', max: '14', order: 5 },
-  { code: '14_16', label: 'Bien', min: '14', max: '16', order: 6 },
-  { code: '16_18', label: 'Très bien', min: '16', max: '18', order: 7 },
-  { code: '18_20', label: 'Excellent', min: '18', max: '20', order: 8 },
+  { code: '0_5', label: 'Très médiocre', min: '0', max: '5', order: 1 },
+  { code: '5_6_5', label: 'Médiocre', min: '5', max: '6.5', order: 2 },
+  { code: '6_5_8', label: 'Très insuffisant', min: '6.5', max: '8', order: 3 },
+  { code: '8_10', label: 'Insuffisant', min: '8', max: '10', order: 4 },
+  { code: '10_12', label: 'Passable', min: '10', max: '12', order: 5 },
+  { code: '12_14', label: 'Assez bien', min: '12', max: '14', order: 6 },
+  { code: '14_16', label: 'Bien', min: '14', max: '16', order: 7 },
+  { code: '16_18', label: 'Très bien', min: '16', max: '18', order: 8 },
+  { code: '18_20', label: 'Excellent', min: '18', max: '20', order: 9 },
 ];
 
 const DECISIONS: { code: string; label: string; min: string; max: string; order: number }[] = [
@@ -44,38 +45,15 @@ const DECISIONS: { code: string; label: string; min: string; max: string; order:
 ];
 
 const GENERAL_TEMPLATES: Record<string, string> = {
-  '0_5': [
-    "Le travail de {prenom} reste très insuffisant ce semestre (moyenne {moyenne}/20).",
-    "Les résultats de {prenom} sont très fragiles (moyenne {moyenne}/20).",
-  ].join('||'),
-  '5_8': [
-    "Les résultats de {prenom} demeurent faibles (moyenne {moyenne}/20).",
-    "Le travail de {prenom} reste en dessous des attentes (moyenne {moyenne}/20).",
-  ].join('||'),
-  '8_10': [
-    "Les résultats de {prenom} sont insuffisants (moyenne {moyenne}/20).",
-    "Le travail de {prenom} doit être consolidé (moyenne {moyenne}/20).",
-  ].join('||'),
-  '10_12': [
-    "Les résultats de {prenom} sont passables (moyenne {moyenne}/20).",
-    "Le travail de {prenom} est en cours d'acquisition (moyenne {moyenne}/20).",
-  ].join('||'),
-  '12_14': [
-    "Les résultats de {prenom} sont assez satisfaisants (moyenne {moyenne}/20).",
-    "Le travail de {prenom} est régulier (moyenne {moyenne}/20).",
-  ].join('||'),
-  '14_16': [
-    "Les résultats de {prenom} sont bons (moyenne {moyenne}/20).",
-    "Le travail de {prenom} est solide (moyenne {moyenne}/20).",
-  ].join('||'),
-  '16_18': [
-    "Les résultats de {prenom} sont très bons (moyenne {moyenne}/20).",
-    "Le travail de {prenom} est de grande qualité (moyenne {moyenne}/20).",
-  ].join('||'),
-  '18_20': [
-    "Les résultats de {prenom} sont excellents (moyenne {moyenne}/20).",
-    "Le travail de {prenom} est remarquable (moyenne {moyenne}/20).",
-  ].join('||'),
+  '0_5': "Le travail de {prenom} reste très médiocre ce semestre (moyenne {moyenne}/20).",
+  '5_6_5': "Les résultats de {prenom} sont médiocres (moyenne {moyenne}/20).",
+  '6_5_8': "Les résultats de {prenom} sont très insuffisants (moyenne {moyenne}/20).",
+  '8_10': "Les résultats de {prenom} sont insuffisants (moyenne {moyenne}/20).",
+  '10_12': "Les résultats de {prenom} sont passables (moyenne {moyenne}/20).",
+  '12_14': "Les résultats de {prenom} sont assez satisfaisants (moyenne {moyenne}/20).",
+  '14_16': "Les résultats de {prenom} sont bons (moyenne {moyenne}/20).",
+  '16_18': "Les résultats de {prenom} sont très bons (moyenne {moyenne}/20).",
+  '18_20': "Les résultats de {prenom} sont excellents (moyenne {moyenne}/20).",
 };
 
 /** Règles par défaut créées pour chaque établissement, sans écraser une personnalisation. */

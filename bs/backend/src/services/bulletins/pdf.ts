@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { HttpError } from '../../lib/http';
 import { formaterNote, type ModeArrondi } from '../calcul';
 import type { SnapshotBilanAnnuel, SnapshotBulletin } from './types';
@@ -722,6 +723,539 @@ function blocSignature(
   return boxY + 40 - y;
 }
 
+function configCouleur(valeur: string | null | undefined, defaut: string): string {
+  return valeur && /^#[0-9a-f]{6}$/i.test(valeur) ? valeur : defaut;
+}
+
+function dessinerImageDans(
+  plan: Plan,
+  dataUrl: string | null | undefined,
+  x: number,
+  y: number,
+  largeur: number,
+  hauteur: number
+): boolean {
+  if (!dataUrl) return false;
+  const correspondance = /^data:image\/(?:png|jpeg);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!correspondance) return false;
+  try {
+    const image = Buffer.from(correspondance[1], 'base64');
+    if (image.length === 0) return false;
+    plan.doc.image(image, x, y, { fit: [largeur, hauteur], align: 'center', valign: 'center' });
+    signaler(plan, x, y, largeur, hauteur, '[image]');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function dessinerDrapeau(plan: Plan, x: number, y: number): void {
+  const doc = plan.doc;
+  const largeur = 42;
+  const hauteur = 25;
+  const bande = largeur / 3;
+  const couleurs = ['#00853f', '#fdef42', '#e31b23'];
+  couleurs.forEach((couleur, index) => {
+    doc.rect(x + index * bande, y, bande, hauteur).fillAndStroke(couleur, COULEUR.trait);
+  });
+  const centreX = x + bande / 2;
+  const centreY = y + hauteur / 2;
+  const rayon = 4;
+  const interieur = 1.7;
+  doc.fillColor('#fdef42');
+  doc.moveTo(centreX, centreY - rayon);
+  for (let index = 1; index < 10; index += 1) {
+    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
+    const r = index % 2 === 0 ? rayon : interieur;
+    doc.lineTo(centreX + Math.cos(angle) * r, centreY + Math.sin(angle) * r);
+  }
+  doc.closePath().fill();
+  doc.fillColor(COULEUR.encre);
+  signaler(plan, x, y, largeur, hauteur, '[drapeau]');
+}
+
+function dessinerLogoMinistere(plan: Plan, x: number, y: number): void {
+  const doc = plan.doc;
+  doc.rect(x, y, 64, 30).lineWidth(0.6).strokeColor(COULEUR.trait).stroke();
+  tracer(plan, ['Logo du', 'Ministère'], x + 2, 60, y + 8, 'centre', 'normal', TAILLE.petit, COULEUR.doux);
+  doc.strokeColor(COULEUR.encre);
+}
+
+function dessinerQr(plan: Plan, contenu: string, x: number, y: number, largeur: number): void {
+  const qr = QRCode.create(contenu, { errorCorrectionLevel: 'M' });
+  const taille = qr.modules.size;
+  const cellule = largeur / taille;
+  plan.doc.save();
+  plan.doc.fillColor(COULEUR.encre);
+  for (let ligne = 0; ligne < taille; ligne += 1) {
+    for (let colonne = 0; colonne < taille; colonne += 1) {
+      if (qr.modules.get(ligne, colonne) === 1) {
+        plan.doc.rect(x + colonne * cellule, y + ligne * cellule, cellule + 0.15, cellule + 0.15).fill();
+      }
+    }
+  }
+  plan.doc.restore();
+  signaler(plan, x, y, largeur, largeur, `[QR:${contenu}]`);
+}
+
+function moyenneGroupe(matiere: Matiere, categorie: 'DEVOIR' | 'COMPOSITION'): string {
+  const groupe = matiere.groupes.find(
+    (item) => item.category === categorie && item.moyenneAffichee !== null
+  );
+  if (groupe) return groupe.moyenneAffichee ?? '—';
+  const incomplet = matiere.groupes.find((item) => item.category === categorie);
+  if (incomplet?.notes.some((note) => note.status === 'ABSENT')) return 'ABS';
+  if (incomplet?.notes.some((note) => note.status === 'ANNULEE')) return 'ANN';
+  return '—';
+}
+
+function rangMatiere(matiere: Matiere): string {
+  return matiere.rangAffiche ?? (matiere.rang === null ? '—' : String(matiere.rang));
+}
+
+function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
+  const lignes: Cellule[][] = [];
+  let parentAffiche: string | null = null;
+  const matieres = [...s.matieres].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+
+  for (const matiere of matieres) {
+    const parent = matiere.parentName ?? (matiere.parentId ? 'Groupe' : null);
+    if (parent && parentAffiche !== parent) {
+      lignes.push([
+        { texte: parent, style: 'gras' },
+        { texte: '' },
+        { texte: '' },
+        { texte: '' },
+        { texte: '' },
+        { texte: '' },
+        { texte: '' },
+        { texte: '' },
+      ]);
+      parentAffiche = parent;
+    }
+    if (!parent) parentAffiche = null;
+    lignes.push([
+      { texte: parent ? `    ${matiere.subjectName}` : matiere.subjectName },
+      { texte: moyenneGroupe(matiere, 'DEVOIR'), aligne: 'centre' },
+      { texte: moyenneGroupe(matiere, 'COMPOSITION'), aligne: 'centre' },
+      {
+        texte: matiere.moyenneAffichee ?? 'Non calculable',
+        aligne: 'centre',
+        style: 'gras',
+        couleur: matiere.moyenneAffichee === null ? COULEUR.alerte : undefined,
+      },
+      {
+        texte: matiere.coefficient ?? '—',
+        aligne: 'centre',
+        couleur: matiere.coefficientValide ? undefined : COULEUR.alerte,
+      },
+      { texte: matiere.pointsPonderes ?? 'Non calculable', aligne: 'centre' },
+      { texte: rangMatiere(matiere), aligne: 'centre' },
+      { texte: matiere.appreciation ?? '—' },
+    ]);
+  }
+
+  lignes.push([
+    { texte: 'TOTAUX', style: 'gras' },
+    { texte: '' },
+    { texte: '' },
+    { texte: affiche(s.synthese.moyenneGeneraleAffichee), aligne: 'centre', style: 'gras' },
+    { texte: s.synthese.totalCoeficients, aligne: 'centre', style: 'gras' },
+    {
+      texte: sansMoyenne(s) ? 'Non calculable' : s.synthese.totalPoints,
+      aligne: 'centre',
+      style: 'gras',
+    },
+    { texte: s.synthese.rangAffiche ?? rangCellule(s.synthese.rang), aligne: 'centre', style: 'gras' },
+    { texte: '' },
+  ]);
+  return lignes;
+}
+
+function lignesCases(cases: string[]): Cellule[][] {
+  const lignes: Cellule[][] = [];
+  for (let index = 0; index < cases.length; index += 4) {
+    lignes.push(cases.slice(index, index + 4).map((libelle) => ({ texte: `[ ] ${libelle}` })));
+  }
+  return lignes;
+}
+
+function moyenneAnnuelle(s: SnapshotBulletin): string {
+  const precedent = s.continuite.semestrePrecedent;
+  if (!precedent?.moyenneGenerale || !s.synthese.moyenneGenerale) return 'Non calculable';
+  try {
+    const valeur = new Decimal(precedent.moyenneGenerale)
+      .plus(s.synthese.moyenneGenerale)
+      .div(2);
+    return (
+      formaterNote(
+        valeur,
+        s.regles.arrondiDecimales,
+        s.regles.arrondiMode as ModeArrondi
+      ) ?? 'Non calculable'
+    );
+  } catch {
+    return 'Non calculable';
+  }
+}
+
+function dessinerBulletinOfficiel(
+  plan: Plan,
+  s: SnapshotBulletin,
+  meta: MetaBulletin,
+  textes: TextesLibres
+): void {
+  const debut = plan.page;
+  const modele = s.modeleOfficiel;
+  if (!modele) return;
+  const doc = plan.doc;
+  const primaire = configCouleur(s.enTete.couleurPrimaire, COULEUR.encre);
+  const secondaire = configCouleur(s.enTete.couleurSecondaire, COULEUR.encre);
+  const accent = configCouleur(s.enTete.couleurAccent, COULEUR.fondFort);
+
+  const drapeauX = ZONE.x;
+  const drapeauY = plan.y;
+  if (!dessinerImageDans(plan, s.enTete.drapeauDataUrl, drapeauX, drapeauY, 42, 25)) {
+    dessinerDrapeau(plan, drapeauX, drapeauY);
+  }
+  const ministereX = ZONE.x + ZONE.largeur - 64;
+  if (!dessinerImageDans(plan, s.enTete.logoMinistereDataUrl, ministereX, drapeauY, 64, 30)) {
+    dessinerLogoMinistere(plan, ministereX, drapeauY);
+  }
+  tracer(
+    plan,
+    ['République du Sénégal'],
+    drapeauX + 48,
+    150,
+    drapeauY + 3,
+    'gauche',
+    'gras',
+    TAILLE.petit
+  );
+  tracer(
+    plan,
+    ["Ministère de l'Éducation nationale"],
+    ministereX - 192,
+    188,
+    drapeauY + 3,
+    'droite',
+    'gras',
+    TAILLE.petit
+  );
+  plan.y += 34;
+  ecrire(plan, (s.enTete.iefName ?? 'Inspection de l’Éducation et de la Formation').toUpperCase(), {
+    aligne: 'centre',
+    style: 'gras',
+    taille: 8.5,
+    apres: 1,
+  });
+  dessinerImageDans(
+    plan,
+    s.enTete.logoDataUrl,
+    ZONE.x + (ZONE.largeur - 90) / 2,
+    plan.y,
+    90,
+    22
+  );
+  ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
+    aligne: 'centre',
+    style: 'gras',
+    taille: 11,
+    apres: 1,
+  });
+  const coordonnees = [s.enTete.ville, s.enTete.telephone ? `Tél. ${s.enTete.telephone}` : null, s.enTete.email]
+    .filter((partie): partie is string => Boolean(partie && partie.trim()))
+    .join('  ·  ');
+  if (coordonnees) {
+    ecrire(plan, coordonnees, { aligne: 'centre', taille: TAILLE.petit, couleur: COULEUR.doux });
+  }
+  filet(plan);
+
+  veillerEspace(plan, 34);
+  doc.rect(ZONE.x, plan.y, ZONE.largeur, 21).fillAndStroke(primaire, COULEUR.trait);
+  tracer(plan, [modele.titre], ZONE.x, ZONE.largeur, plan.y + 4, 'centre', 'gras', 10.5, '#FFFFFF');
+  plan.y += 21;
+  ecrire(plan, `ANNEE SCOLAIRE : ${s.enTete.anneeScolaire.nom}`, {
+    aligne: 'centre',
+    style: 'gras',
+    taille: 8,
+    apres: 3,
+  });
+
+  const colonnesIdentite = 4;
+  const largeurIdentite = Math.floor(ZONE.largeur / colonnesIdentite);
+  tableau(
+    plan,
+    'Identité',
+    [
+      { titre: 'Identité', largeur: largeurIdentite },
+      { titre: 'Naissance', largeur: largeurIdentite },
+      { titre: 'Scolarité', largeur: largeurIdentite },
+      { titre: 'Bulletin', largeur: ZONE.largeur - 3 * largeurIdentite },
+    ],
+    [
+      [
+        { texte: 'Nom', valeur: s.eleve.nom },
+        { texte: 'Prénom(s)', valeur: s.eleve.prenoms },
+        { texte: 'Classe', valeur: s.eleve.classe },
+        { texte: 'Sexe', valeur: s.eleve.sexe ?? '—' },
+      ],
+      [
+        { texte: 'Né(e) le', valeur: dateFr(s.eleve.birthDate, false) },
+        { texte: 'Lieu de naissance', valeur: s.eleve.birthPlace ?? '—' },
+        { texte: 'Matricule', valeur: s.eleve.matricule },
+        { texte: 'IEN (identifiant national)', valeur: s.eleve.ien ?? '—' },
+      ],
+      [
+        { texte: 'Niveau', valeur: s.eleve.niveau ?? '—' },
+        { texte: 'Série (NON APPLICABLE)', valeur: s.eleve.serie ?? 'NON APPLICABLE' },
+        {
+          texte: 'Classe doublée (NEANT ou OUI)',
+          valeur: s.eleve.isRepeating ? 'OUI' : 'NEANT',
+        },
+        { texte: 'Effectif', valeur: String(s.synthese.effectif) },
+      ],
+      [
+        { texte: 'Moyenne classe', valeur: affiche(s.synthese.moyenneClasseAffichee) },
+        { texte: 'ANNEE SCOLAIRE', valeur: s.enTete.anneeScolaire.nom },
+        { texte: 'Semestre', valeur: s.enTete.semestre.nom },
+        { texte: 'Statut bulletin', valeur: meta.statut },
+      ],
+    ],
+    { tete: TAILLE.petit }
+  );
+
+  ecrire(plan, 'Notes et moyennes par discipline', {
+    style: 'gras',
+    taille: TAILLE.section,
+    avant: 5,
+    apres: 1,
+  });
+  tableau(
+    plan,
+    'Disciplines',
+    [
+      { titre: 'Disciplines', largeur: 132 },
+      { titre: 'Devoirs', largeur: 44, aligne: 'centre' },
+      { titre: 'Compos', largeur: 44, aligne: 'centre' },
+      { titre: 'Moy', largeur: 40, aligne: 'centre' },
+      { titre: 'Coeff', largeur: 32, aligne: 'centre' },
+      { titre: 'Moy×Coef', largeur: 48, aligne: 'centre' },
+      { titre: 'Rang', largeur: 38, aligne: 'centre' },
+      { titre: 'Appréciations', largeur: ZONE.largeur - 378 },
+    ],
+    lignesMatieresOfficielles(s),
+    { tete: 7 }
+  );
+
+  const absences = s.absences;
+  tableau(
+    plan,
+    'Synthèse',
+    [
+      { titre: 'Moyenne', largeur: 110, aligne: 'centre' },
+      { titre: 'Rang', largeur: 110, aligne: 'centre' },
+      { titre: 'Retards (h, min)', largeur: 130, aligne: 'centre' },
+      { titre: 'Absences (dont justifiées)', largeur: ZONE.largeur - 350, aligne: 'centre' },
+    ],
+    [
+      [
+        { texte: affiche(s.synthese.moyenneGeneraleAffichee), aligne: 'centre', style: 'gras' },
+        {
+          texte: s.synthese.rangAffiche ?? rangCellule(s.synthese.rang),
+          aligne: 'centre',
+          style: 'gras',
+        },
+        {
+          texte:
+            absences?.disponible
+              ? `${absences.retards} (${absences.minutesRetard} min)`
+              : 'Non renseigné',
+          aligne: 'centre',
+        },
+        {
+          texte:
+            absences?.disponible
+              ? `${absences.absencesTotal} (dont ${absences.absencesJustifiees} justifiées)`
+              : 'Non renseigné',
+          aligne: 'centre',
+        },
+      ],
+    ],
+    { tete: 7 }
+  );
+
+  if (s.synthese.incomplet || s.motifs.length > 0) {
+    const motif = s.motifs[0] ?? s.synthese.motifNonClasse;
+    ecrire(
+      plan,
+      motif ? `Bulletin incomplet — ${motif}` : 'Bulletin incomplet — données manquantes',
+      { couleur: COULEUR.alerte, taille: TAILLE.petit, apres: 2 }
+    );
+  }
+
+  if (s.enTete.semestre.numero === 2) {
+    ecrire(plan, 'Moyennes, rangs et moyenne de classe', {
+      style: 'gras',
+      taille: TAILLE.section,
+      avant: 5,
+      apres: 1,
+    });
+    const precedent = s.continuite.semestrePrecedent;
+    tableau(
+      plan,
+      'Semestres',
+      [
+        { titre: 'Moyennes', largeur: 175 },
+        { titre: 'Rangs', largeur: 160, aligne: 'centre' },
+        { titre: 'Moyenne classe', largeur: ZONE.largeur - 335, aligne: 'centre' },
+      ],
+      [
+        [
+          { texte: 'Premier semestre' },
+          {
+            texte: precedent?.rang === null || precedent?.rang === undefined ? '—' : String(precedent.rang),
+            aligne: 'centre',
+          },
+          { texte: precedent?.moyenneGeneraleAffichee ?? 'Non calculable', aligne: 'centre' },
+        ],
+        [
+          { texte: 'Second semestre' },
+          {
+            texte: s.synthese.rangAffiche ?? rangCellule(s.synthese.rang),
+            aligne: 'centre',
+          },
+          { texte: affiche(s.synthese.moyenneClasseAffichee), aligne: 'centre' },
+        ],
+        [
+          { texte: 'Moyenne générale', style: 'gras' },
+          { texte: '—', aligne: 'centre' },
+          { texte: moyenneAnnuelle(s), aligne: 'centre', style: 'gras' },
+        ],
+      ],
+      { tete: 7 }
+    );
+    cadre(plan, 'Absences & Retards second semestre', [
+      {
+        libelle: 'Absences',
+        valeur: absences?.disponible
+          ? `${absences.absencesTotal} (dont ${absences.absencesJustifiees} justifiées)`
+          : 'Non renseigné',
+      },
+      {
+        libelle: 'Retards',
+        valeur: absences?.disponible
+          ? `${absences.retards} (${absences.minutesRetard} min)`
+          : 'Non renseigné',
+      },
+    ]);
+  }
+
+  const cases = s.enTete.semestre.numero === 1 ? modele.casesS1 : modele.casesS2;
+  ecrire(plan, 'Cases à cocher par le conseil', {
+    style: 'gras',
+    taille: TAILLE.section,
+    avant: 5,
+    apres: 1,
+  });
+  const caseColonne = ZONE.largeur / 4;
+  tableau(
+    plan,
+    'Cases',
+    [
+      { titre: '', largeur: caseColonne },
+      { titre: '', largeur: caseColonne },
+      { titre: '', largeur: caseColonne },
+      { titre: '', largeur: ZONE.largeur - 3 * caseColonne },
+    ],
+    lignesCases(cases),
+    { sansEnTete: true, tete: TAILLE.petit }
+  );
+
+  if (s.enTete.semestre.numero === 2) {
+    cadre(plan, 'Décision du conseil', [
+      {
+        libelle: 'Décision proposée (à valider)',
+        valeur: textes.decisionConseil ?? modele.decisionProposee ?? 'Non renseigné',
+      },
+      {
+        libelle: 'Observation du conseil',
+        valeur: modele.observationConseil ?? textes.appreciation ?? 'Non renseigné',
+      },
+    ]);
+  } else {
+    ecrire(plan, 'Observations du conseil des professeurs', {
+      style: 'gras',
+      taille: TAILLE.section,
+      avant: 4,
+      apres: 1,
+    });
+    ecrire(plan, modele.observationConseil ?? textes.appreciation ?? 'Non renseigné', {
+      taille: 8,
+      apres: 2,
+    });
+  }
+
+  const signatureY = plan.y + 8;
+  const largeurBloc = 190;
+  const gauche = blocSignature(
+    plan,
+    ZONE.x,
+    signatureY,
+    largeurBloc,
+    'Le Professeur principal',
+    s.enTete.professeurPrincipal
+  );
+  const droite = blocSignature(
+    plan,
+    ZONE.x + ZONE.largeur - largeurBloc,
+    signatureY,
+    largeurBloc,
+    "Le Chef d'établissement",
+    s.enTete.chefEtablissement
+  );
+  doc.fillColor(secondaire);
+  filet(plan);
+  doc.fillColor(COULEUR.encre);
+  plan.y = signatureY + Math.max(gauche, droite) + 2;
+
+  veillerEspace(plan, 62);
+  const qrY = plan.y + 4;
+  const qrTaille = 44;
+  dessinerQr(plan, modele.qrInformations, ZONE.x, qrY, qrTaille);
+  tracer(
+    plan,
+    ['Informations Élève'],
+    ZONE.x,
+    qrTaille + 30,
+    qrY + qrTaille + 3,
+    'centre',
+    'normal',
+    TAILLE.petit
+  );
+  dessinerQr(plan, modele.qrBulletin, ZONE.x + ZONE.largeur - qrTaille, qrY, qrTaille);
+  tracer(
+    plan,
+    ['Ouvrir le bulletin'],
+    ZONE.x + ZONE.largeur - qrTaille - 30,
+    qrTaille + 30,
+    qrY + qrTaille + 3,
+    'centre',
+    'normal',
+    TAILLE.petit
+  );
+  plan.y = qrY + qrTaille + 18;
+
+  const etiquette = `${s.eleve.nom} ${s.eleve.prenoms} — ${s.eleve.matricule} — ${s.eleve.classe} — ${s.enTete.semestre.nom}`;
+  const mention = mentionDe(meta, s.genereLe);
+  for (let page = debut; page <= plan.page; page += 1) {
+    plan.etiquettes[page - 1] = etiquette;
+    plan.mentions[page - 1] = mention;
+    plan.statuts[page - 1] = meta.statut;
+  }
+  void accent;
+}
+
 /** Une page par bulletin. Le contenu vient uniquement du snapshot et des colonnes texte. */
 function dessinerBulletin(plan: Plan, s: SnapshotBulletin, meta: MetaBulletin, textes: TextesLibres): void {
   const debut = plan.page;
@@ -1162,12 +1696,17 @@ export interface BulletinPourPdf {
   textes?: TextesLibres;
 }
 
+function estOfficiel(s: SnapshotBulletin): boolean {
+  return Boolean(s.modeleOfficiel && s.enTete.modeleBulletin !== 'SIMPLE');
+}
+
 export async function genererPdfBulletin(item: BulletinPourPdf): Promise<PdfProduit> {
   const s = item.snapshot;
   const { plan, finaliser } = creerDocument(
     `Bulletin ${s.eleve.nom} ${s.eleve.prenoms} — ${s.enTete.semestre.nom}`
   );
-  dessinerBulletin(plan, s, item.meta, item.textes ?? {});
+  if (estOfficiel(s)) dessinerBulletinOfficiel(plan, s, item.meta, item.textes ?? {});
+  else dessinerBulletin(plan, s, item.meta, item.textes ?? {});
   habillerPages(plan);
   const pdf = await finaliser();
   return { pdf, pages: plan.page, journal: plan.journal };
@@ -1186,7 +1725,11 @@ export async function genererPdfBulletins(items: BulletinPourPdf[]): Promise<Pdf
       plan.page += 1;
       plan.y = ZONE.y;
     }
-    dessinerBulletin(plan, item.snapshot, item.meta, item.textes ?? {});
+    if (estOfficiel(item.snapshot)) {
+      dessinerBulletinOfficiel(plan, item.snapshot, item.meta, item.textes ?? {});
+    } else {
+      dessinerBulletin(plan, item.snapshot, item.meta, item.textes ?? {});
+    }
   });
   habillerPages(plan);
   const pdf = await finaliser();

@@ -8,6 +8,8 @@ import { requireAuth, requireRole, requireSchoolId } from '../middleware/auth';
 import { writeAuditLog } from '../services/audit';
 import { ensureDefaultAppreciationRules } from '../services/appreciations/rules';
 import { ensureDefaultLevels } from '../services/levels';
+import { cleNiveau } from '../services/levels';
+import { appliquerModelesALaClasse, ensureDefaultSubjects, MODELES_PAR_NIVEAU } from '../services/subjects/templates';
 
 const router = Router();
 const yearSchema = z.object({ name: z.string().trim().min(5), startsAt: z.coerce.date(), endsAt: z.coerce.date(), status: z.enum(['PREPARATION', 'ACTIVE', 'CLOSED']).optional() }).refine(v => v.endsAt > v.startsAt, { message: 'La date de fin doit être après la date de début' });
@@ -38,6 +40,29 @@ const coefficientUpdateSchema = z.object({
 });
 const teacherUpdateSchema = z.object({
   teacherName: z.string().trim().max(120).nullish(),
+});
+const subjectSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  code: z.string().trim().min(1).max(60).optional(),
+  levelId: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
+  coefficient: z.string().regex(/^\d{1,3}(\.\d{1,2})?$/).optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+  isActive: z.boolean().optional(),
+  isChoice: z.boolean().optional(),
+});
+const subjectChoiceSchema = z.object({
+  enrollmentId: z.string().min(1),
+  subjectId: z.string().min(1),
+});
+const bulletinSettingsSchema = z.object({
+  seuilPassage: z.string().regex(/^\d{1,2}(\.\d{1,2})?$/),
+  modeleBulletin: z.enum(['OFFICIEL', 'SIMPLE']),
+  couleurPrimaire: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  couleurSecondaire: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  couleurAccent: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  drapeauDataUrl: z.string().max(2_000_000).nullable().optional(),
+  logoMinistereDataUrl: z.string().max(2_000_000).nullable().optional(),
 });
 const appreciationRuleSchema = z.object({
   scope: z.enum(['MATIERE', 'MENTION', 'DECISION', 'GENERALE']),
@@ -234,7 +259,49 @@ router.post('/levels', requireCsrf, asyncHandler(async(req,res)=>{const schoolId
 router.get('/series', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);await ensureDefaultLevels(schoolId);res.json({series:await prisma.series.findMany({where:{schoolId,deletedAt:null},include:{level:true},orderBy:{name:'asc'}})});}));
 router.post('/series', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.parse(req.body);if(data.levelId&&!await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}}))throw new HttpError(404,'Niveau introuvable');const series=await prisma.series.create({data:{schoolId,name:data.name,levelId:data.levelId}});res.status(201).json({series});}));
 router.get('/classes', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({classes:await prisma.classroom.findMany({where:{schoolId,deletedAt:null},include:{academicYear:true,level:true,series:true,_count:{select:{enrollments:{where:{status:'ACTIVE',deletedAt:null}}}}},orderBy:{name:'asc'}})});}));
-router.post('/classes', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=classSchema.parse(req.body);const year=await prisma.academicYear.findFirst({where:{id:data.academicYearId,schoolId,deletedAt:null}});const level=await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}});if(!year||!level)throw new HttpError(404,'Année ou niveau introuvable');if(year.status==='CLOSED')throw new HttpError(409,"L'année scolaire est clôturée");const classroom=await prisma.classroom.create({data:{...data,schoolId}});res.status(201).json({classroom});}));
+router.post('/classes', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=classSchema.parse(req.body);const year=await prisma.academicYear.findFirst({where:{id:data.academicYearId,schoolId,deletedAt:null}});const level=await prisma.level.findFirst({where:{id:data.levelId,schoolId,deletedAt:null}});if(!year||!level)throw new HttpError(404,'Année ou niveau introuvable');if(year.status==='CLOSED')throw new HttpError(409,"L'année scolaire est clôturée");const classroom=await prisma.classroom.create({data:{...data,schoolId}});const modeles=await appliquerModelesALaClasse({schoolId,classroomId:classroom.id});res.status(201).json({classroom,modeles});}));
+
+/**
+ * @openapi
+ * /api/schooling/classes/{id}/apply-subject-templates:
+ *   post:
+ *     summary: Appliquer les modèles de matières du niveau à une classe
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       Crée uniquement les matières manquantes dans la classe. L'opération est idempotente
+ *       et n'écrase pas les coefficients existants. Le jeton CSRF est requis.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *         description: Identifiant de la classe
+ *     responses:
+ *       200: { description: Matières ajoutées et modèle du niveau appliqué }
+ *       404: { description: Classe introuvable dans l'établissement }
+ */
+router.post('/classes/:id/apply-subject-templates', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const classroom = await prisma.classroom.findFirst({ where: { id: req.params.id, schoolId, deletedAt: null } });
+  if (!classroom) throw new HttpError(404, 'Classe introuvable');
+  const appli = await appliquerModelesALaClasse({ schoolId, classroomId: classroom.id });
+  const niveau = classroom.levelId
+    ? (await prisma.level.findFirst({ where: { id: classroom.levelId, schoolId }, select: { name: true } }))?.name ?? ''
+    : '';
+  const modeles = [
+    { niveau, nom: `Modèle ${niveau || 'du niveau'}`, matieres: MODELES_PAR_NIVEAU[cleNiveau(niveau)] ?? [] },
+  ];
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SUBJECT_TEMPLATES_APPLIED',
+    entityType: 'Classroom',
+    entityId: classroom.id,
+    metadata: appli,
+  });
+  res.json({ ...appli, modeles });
+}));
 router.patch('/classes/:id', requireCsrf, asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   const data = classSchema
@@ -276,11 +343,167 @@ router.patch('/classes/:id', requireCsrf, asyncHandler(async (req, res) => {
   });
   res.json({ classroom: updated });
 }));
-router.get('/subjects', asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);res.json({subjects:await prisma.subject.findMany({where:{schoolId,deletedAt:null},orderBy:{name:'asc'}})});}));router.post('/subjects', requireCsrf, asyncHandler(async(req,res)=>{const schoolId=requireSchoolId(req);const data=namedSchema.extend({code:z.string().trim().min(1)}).parse(req.body);const subject=await prisma.subject.create({data:{schoolId,name:data.name,code:data.code}});res.status(201).json({subject});}));
 /**
- * Affectations discipline / classe avec coefficient.
- * C'est sur une affectation que l'évaluation est créée (cf. routes/grades.ts),
- * et le coefficient de la ligne court sert de version effective à la date de calcul.
+ * @openapi
+ * /api/schooling/subjects:
+ *   get:
+ *     summary: Lister les matières de l'établissement
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       Retourne les matières par niveau avec leur parent, leur coefficient et leur ordre.
+ *       Les modèles officiels 6e à 3e sont créés automatiquement s'ils sont absents.
+ *     responses:
+ *       200: { description: Liste des matières actives et inactives }
+ *   post:
+ *     summary: Créer une matière
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       `levelId` et `parentId` doivent appartenir à l'établissement. `isChoice` marque une
+ *       option réellement sélectionnable ; le LV2 générique reste exclu des choix. Jeton CSRF requis.
+ *     responses:
+ *       201: { description: Matière créée }
+ *       404: { description: Niveau ou matière parente introuvable }
+ * /api/schooling/subjects/{id}:
+ *   patch:
+ *     summary: Modifier une matière
+ *     tags: [Disciplines et réglages]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Matière mise à jour }
+ *       400: { description: Une matière ne peut pas être son propre parent }
+ *       404: { description: Matière ou matière parente introuvable }
+ *   delete:
+ *     summary: Supprimer logiquement une matière
+ *     tags: [Disciplines et réglages]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204: { description: Matière désactivée et masquée }
+ *       404: { description: Matière introuvable }
+ */
+router.get('/subjects', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  await ensureDefaultSubjects(schoolId);
+  const subjects = await prisma.subject.findMany({
+    where: { schoolId, deletedAt: null },
+    include: { level: true, parent: true },
+    orderBy: [{ level: { sortOrder: 'asc' } }, { sortOrder: 'asc' }, { name: 'asc' }],
+  });
+  res.json({
+    subjects: subjects.map((subject) => ({
+      ...subject,
+      coefficient: String(subject.coefficient),
+    })),
+  });
+}));
+
+router.post('/subjects', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = subjectSchema.parse(req.body);
+  if (data.levelId && !await prisma.level.findFirst({ where: { id: data.levelId, schoolId, deletedAt: null } })) {
+    throw new HttpError(404, 'Niveau introuvable');
+  }
+  if (data.parentId && !await prisma.subject.findFirst({ where: { id: data.parentId, schoolId, deletedAt: null } })) {
+    throw new HttpError(404, 'Matière parente introuvable');
+  }
+  const code = data.code ?? data.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const subject = await prisma.subject.create({
+    data: {
+      schoolId,
+      name: data.name,
+      code,
+      levelId: data.levelId ?? null,
+      parentId: data.parentId ?? null,
+      coefficient: data.coefficient ?? '1',
+      sortOrder: data.sortOrder ?? 0,
+      isActive: data.isActive ?? true,
+      isChoice: data.isChoice ?? false,
+    },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SUBJECT_CREATED',
+    entityType: 'Subject',
+    entityId: subject.id,
+    metadata: { name: subject.name, code: subject.code },
+  });
+  res.status(201).json({ subject: { ...subject, coefficient: String(subject.coefficient) } });
+}));
+
+router.patch('/subjects/:id', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = subjectSchema.partial().parse(req.body);
+  const current = await prisma.subject.findFirst({ where: { id: req.params.id, schoolId, deletedAt: null } });
+  if (!current) throw new HttpError(404, 'Matière introuvable');
+  if (data.parentId === current.id) throw new HttpError(400, 'Une matière ne peut pas être son propre parent');
+  if (data.parentId && !await prisma.subject.findFirst({ where: { id: data.parentId, schoolId, deletedAt: null } })) {
+    throw new HttpError(404, 'Matière parente introuvable');
+  }
+  const updated = await prisma.subject.update({
+    where: { id: current.id },
+    data: {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.code !== undefined ? { code: data.code } : {}),
+      ...(data.levelId !== undefined ? { levelId: data.levelId } : {}),
+      ...(data.parentId !== undefined ? { parentId: data.parentId } : {}),
+      ...(data.coefficient !== undefined ? { coefficient: new Prisma.Decimal(data.coefficient) } : {}),
+      ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
+      ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
+      ...(data.isChoice !== undefined ? { isChoice: data.isChoice } : {}),
+    },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SUBJECT_UPDATED',
+    entityType: 'Subject',
+    entityId: updated.id,
+    metadata: data,
+  });
+  res.json({ subject: { ...updated, coefficient: String(updated.coefficient) } });
+}));
+
+router.delete('/subjects/:id', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const subject = await prisma.subject.findFirst({ where: { id: req.params.id, schoolId, deletedAt: null } });
+  if (!subject) throw new HttpError(404, 'Matière introuvable');
+  await prisma.subject.update({ where: { id: subject.id }, data: { deletedAt: new Date(), isActive: false } });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SUBJECT_DELETED',
+    entityType: 'Subject',
+    entityId: subject.id,
+  });
+  res.status(204).end();
+}));
+/**
+ * @openapi
+ * /api/schooling/classroom-subjects:
+ *   get:
+ *     summary: Affectations discipline/classe avec coefficient
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       C'est sur une affectation que l'évaluation est créée ; son coefficient est la version
+ *       effective utilisée au calcul. Les lignes incluent la classe et la matière parente.
+ *     parameters:
+ *       - in: query
+ *         name: classroomId
+ *         schema: { type: string }
+ *         description: Filtre sur une classe ; sans filtre, toutes les affectations sont renvoyées
+ *     responses:
+ *       200: { description: Affectations triées par classe et ordre d'affichage }
  */
 router.get('/classroom-subjects', asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
@@ -291,16 +514,35 @@ router.get('/classroom-subjects', asyncHandler(async (req, res) => {
     // et classroom.academicYear.name : il faut donc inclure ces relations, sinon
     // la page plante (« Cannot read properties of undefined »).
     include: {
-      subject: true,
+      subject: { include: { parent: true } },
       classroom: { include: { academicYear: true, level: true, series: true } },
     },
-    orderBy: [{ classroom: { name: 'asc' } }, { subject: { name: 'asc' } }],
+    orderBy: [{ classroom: { name: 'asc' } }, { sortOrder: 'asc' }, { subject: { name: 'asc' } }],
   });
   res.json({
     classroomSubjects: rows.map((row) => ({ ...row, coefficient: String(row.coefficient) })),
   });
 }));
 
+/**
+ * @openapi
+ * /api/schooling/appreciation-rules:
+ *   get:
+ *     summary: Règles d'appréciation automatique de l'établissement
+ *     tags: [Disciplines et réglages]
+ *     description: Les règles par défaut sont créées automatiquement si l'établissement n'en a pas.
+ *     responses:
+ *       200: { description: Règles actives et libellés configurables }
+ *   put:
+ *     summary: Remplacer les règles d'appréciation automatique
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       Accepte entre 1 et 40 règles, avec des seuils compris entre 0 et 20 et un code unique
+ *       par portée. Jeton CSRF requis.
+ *     responses:
+ *       200: { description: Règles enregistrées }
+ *       400: { description: Seuils ou codes invalides }
+ */
 router.get('/appreciation-rules', asyncHandler(async (req, res) => {
   const schoolId = requireSchoolId(req);
   await ensureDefaultAppreciationRules(schoolId);
@@ -518,4 +760,154 @@ router.patch('/classroom-subjects/:id/teacher', requireCsrf, asyncHandler(async 
     classroomSubject: { ...updated, coefficient: String(updated.coefficient) },
   });
 }));
+/**
+ * @openapi
+ * /api/schooling/bulletin-settings:
+ *   get:
+ *     summary: Paramètres du bulletin officiel
+ *     tags: [Disciplines et réglages]
+ *     responses:
+ *       200: { description: Seuil de passage, modèle, couleurs, drapeau et logo du Ministère }
+ *       404: { description: Établissement introuvable }
+ *   patch:
+ *     summary: Modifier les paramètres du bulletin officiel
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       Réservé à l'administrateur d'établissement. Les images sont des data URLs PNG ou JPEG
+ *       de 2 Mio maximum. Jeton CSRF requis.
+ *     responses:
+ *       200: { description: Paramètres enregistrés }
+ *       403: { description: Réservé à l'administrateur d'établissement }
+ *       400: { description: Seuil, modèle, couleur ou image invalide }
+ */
+router.get('/bulletin-settings', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const school = await prisma.school.findFirst({
+    where: { id: schoolId, deletedAt: null },
+    select: {
+      seuilPassage: true,
+      modeleBulletin: true,
+      couleurPrimaire: true,
+      couleurSecondaire: true,
+      couleurAccent: true,
+      drapeauDataUrl: true,
+      logoMinistereDataUrl: true,
+    },
+  });
+  if (!school) throw new HttpError(404, 'Établissement introuvable');
+  res.json({
+    settings: {
+      ...school,
+      seuilPassage: String(school.seuilPassage),
+    },
+  });
+}));
+
+router.patch('/bulletin-settings', requireCsrf, asyncHandler(async (req, res) => {
+  if (req.currentUser!.role !== 'SCHOOL_ADMIN') {
+    throw new HttpError(403, 'Seul l’administrateur peut modifier ces paramètres');
+  }
+  const schoolId = requireSchoolId(req);
+  const data = bulletinSettingsSchema.parse(req.body);
+  const updated = await prisma.school.update({
+    where: { id: schoolId },
+    data: {
+      seuilPassage: new Prisma.Decimal(data.seuilPassage),
+      modeleBulletin: data.modeleBulletin,
+      couleurPrimaire: data.couleurPrimaire,
+      couleurSecondaire: data.couleurSecondaire,
+      couleurAccent: data.couleurAccent,
+      ...(data.drapeauDataUrl !== undefined ? { drapeauDataUrl: data.drapeauDataUrl } : {}),
+      ...(data.logoMinistereDataUrl !== undefined ? { logoMinistereDataUrl: data.logoMinistereDataUrl } : {}),
+    },
+    select: {
+      seuilPassage: true,
+      modeleBulletin: true,
+      couleurPrimaire: true,
+      couleurSecondaire: true,
+      couleurAccent: true,
+      drapeauDataUrl: true,
+      logoMinistereDataUrl: true,
+    },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'BULLETIN_SETTINGS_UPDATED',
+    entityType: 'School',
+    entityId: schoolId,
+    metadata: data,
+  });
+  res.json({ settings: { ...updated, seuilPassage: String(updated.seuilPassage) } });
+}));
+
+/**
+ * @openapi
+ * /api/schooling/subject-choices:
+ *   get:
+ *     summary: Options choisies par les élèves d'une classe
+ *     tags: [Disciplines et réglages]
+ *     description: Retourne les choix existants et la liste des options sélectionnables.
+ *     parameters:
+ *       - in: query
+ *         name: classroomId
+ *         schema: { type: string }
+ *         description: Filtre sur une classe ; sans filtre, tous les choix sont renvoyés
+ *     responses:
+ *       200: { description: Choix par inscription et options actives }
+ *   put:
+ *     summary: Enregistrer l'option d'un élève
+ *     tags: [Disciplines et réglages]
+ *     description: >
+ *       Une seule option active par inscription. Les matières `isChoice` sont acceptées, sauf
+ *       le LV2 générique dont le code se termine par `_LV2`. Jeton CSRF requis.
+ *     responses:
+ *       200: { description: Choix créé ou remplacé }
+ *       404: { description: Inscription ou matière à choix introuvable }
+ */
+router.get('/subject-choices', asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const classroomId = typeof req.query.classroomId === 'string' ? req.query.classroomId : '';
+  const choices = await prisma.studentSubjectChoice.findMany({
+    where: {
+      schoolId,
+      ...(classroomId ? { enrollment: { classroomId } } : {}),
+    },
+    include: { enrollment: { include: { student: true } }, subject: true },
+    orderBy: [{ enrollment: { student: { lastName: 'asc' } } }],
+  });
+  const options = await prisma.subject.findMany({
+    where: { schoolId, deletedAt: null, isActive: true, isChoice: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+  res.json({ choices, options });
+}));
+
+router.put('/subject-choices', requireCsrf, asyncHandler(async (req, res) => {
+  const schoolId = requireSchoolId(req);
+  const data = subjectChoiceSchema.parse(req.body);
+  const [enrollment, subject] = await Promise.all([
+    prisma.enrollment.findFirst({ where: { id: data.enrollmentId, schoolId, deletedAt: null } }),
+    prisma.subject.findFirst({ where: { id: data.subjectId, schoolId, deletedAt: null, isChoice: true } }),
+  ]);
+  if (!enrollment) throw new HttpError(404, 'Inscription introuvable');
+  if (!subject || subject.code.endsWith('_LV2')) throw new HttpError(404, 'Matière à choix introuvable');
+  const choice = await prisma.studentSubjectChoice.upsert({
+    where: { enrollmentId: enrollment.id },
+    create: { schoolId, enrollmentId: enrollment.id, subjectId: subject.id },
+    update: { subjectId: subject.id },
+  });
+  await writeAuditLog({
+    req,
+    schoolId,
+    userId: req.currentUser!.id,
+    action: 'SUBJECT_CHOICE_UPDATED',
+    entityType: 'StudentSubjectChoice',
+    entityId: choice.id,
+    metadata: { enrollmentId: enrollment.id, subjectId: subject.id },
+  });
+  res.json({ choice });
+}));
+
 export const schoolingRouter=router;

@@ -10,6 +10,8 @@ import {
   Clock3,
   FileText,
   GraduationCap,
+  Languages,
+  Layers,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -156,6 +158,8 @@ export function Layout() {
       links: [
         { to: '/classes', label: 'Classes et années', icon: School },
         { to: '/disciplines', label: 'Matières', icon: BookOpenCheck },
+        { to: '/modeles-matieres', label: 'Modèles par niveau', icon: Layers },
+        { to: '/choix-matieres', label: 'Choix des options', icon: Languages },
         { to: '/types-evaluation', label: 'Devoirs et compositions', icon: ClipboardList },
       ],
     });

@@ -75,7 +75,12 @@ export interface FeuilleSaisie {
   classroomSubject: {
     id: string;
     coefficient: string | null;
-    subject: { id: string; name: string; code: string };
+    subject: {
+      id: string;
+      name: string;
+      code: string;
+      parent: { id: string; name: string } | null;
+    };
     classroom: { id: string; name: string };
   };
   semester: { id: string; number: number; name: string; academicYearId: string };
@@ -118,7 +123,13 @@ export interface Affectation {
   classroomId: string;
   subjectId: string;
   coefficient: string;
-  subject: { id: string; name: string; code: string };
+  sortOrder: number;
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+    parent: { id: string; name: string } | null;
+  };
   classroom: { id: string; name: string };
 }
 

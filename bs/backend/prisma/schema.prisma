@@ -156,6 +156,15 @@ model School {
   poidsSemestre2             Decimal @default(1) @db.Decimal(5, 2)
   annuelSiSemestreManquant   String  @default("NULL")
 
+  // Modèle officiel des bulletins CEM et identité visuelle configurable.
+  seuilPassage             Decimal @default(10) @db.Decimal(5, 2)
+  modeleBulletin           String  @default("OFFICIEL")
+  couleurPrimaire          String  @default("#0B2D4F")
+  couleurSecondaire        String  @default("#0B9B67")
+  couleurAccent            String  @default("#E5B544")
+  drapeauDataUrl           String? @db.Text
+  logoMinistereDataUrl     String? @db.Text
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -173,6 +182,7 @@ model School {
   appreciations     Appreciation[]
   appreciationRules AppreciationRule[]
   councilDecisions  CouncilDecision[]
+  subjectChoices    StudentSubjectChoice[]
 
   @@index([deletedAt])
 }
@@ -226,6 +236,7 @@ model Level {
   createdAt  DateTime    @default(now())
   series     Series[]
   classrooms Classroom[]
+  subjects   Subject[]
 
   @@unique([schoolId, name])
 }
@@ -280,6 +291,8 @@ model Student {
   address       String?
   guardianName  String?
   guardianPhone String?
+  /// Identifiant national de l'élève (IEN), affiché sur le bulletin officiel.
+  ien           String?
   deletedAt     DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -309,23 +322,38 @@ model Enrollment {
   attendanceRecords AttendanceRecord[]
   appreciations     Appreciation[]
   councilDecisions  CouncilDecision[]
+  subjectChoices    StudentSubjectChoice[]
 
   @@index([schoolId, studentId])
   @@index([schoolId, classroomId, status])
 }
 
 model Subject {
-  id            String             @id @default(cuid())
+  id            String                 @id @default(cuid())
   schoolId      String
-  school        School             @relation(fields: [schoolId], references: [id])
+  school        School                 @relation(fields: [schoolId], references: [id])
   name          String
   code          String
+  /// Niveau auquel le modèle de matière s'applique (6e, 5e, 4e, 3e…).
+  levelId       String?
+  level         Level?                 @relation(fields: [levelId], references: [id])
+  /// Groupe parent, par exemple « Français » pour Rédaction/Orthographe.
+  parentId      String?
+  parent        Subject?               @relation("SubjectParent", fields: [parentId], references: [id])
+  children      Subject[]              @relation("SubjectParent")
+  coefficient   Decimal                @default(1) @db.Decimal(6, 2)
+  sortOrder     Int                    @default(0)
+  isActive      Boolean                @default(true)
+  /// Matière à choix par élève (LV2 par exemple).
+  isChoice      Boolean                @default(false)
   deletedAt     DateTime?
-  createdAt     DateTime           @default(now())
+  createdAt     DateTime               @default(now())
   classrooms    ClassroomSubject[]
   appreciations Appreciation[]
+  subjectChoices StudentSubjectChoice[]
 
   @@unique([schoolId, code])
+  @@index([schoolId, levelId, sortOrder])
 }
 
 model ClassroomSubject {
@@ -336,6 +364,8 @@ model ClassroomSubject {
   subjectId     String
   subject       Subject      @relation(fields: [subjectId], references: [id])
   coefficient   Decimal      @db.Decimal(6, 2)
+  sortOrder     Int          @default(0)
+  isActive      Boolean      @default(true)
   /// Enseignant affiché sur le bulletin : champ libre, non un compte utilisateur.
   teacherName   String?
   effectiveFrom DateTime     @default(now())
@@ -343,6 +373,22 @@ model ClassroomSubject {
   assessments   Assessment[]
 
   @@index([schoolId, classroomId])
+  @@index([schoolId, subjectId])
+}
+
+/// Choix d'une matière « à option » pour un élève (LV2 en 4e par exemple).
+model StudentSubjectChoice {
+  id           String   @id @default(cuid())
+  schoolId     String
+  school       School   @relation(fields: [schoolId], references: [id])
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id])
+  subjectId    String
+  subject      Subject  @relation(fields: [subjectId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([enrollmentId])
   @@index([schoolId, subjectId])
 }
 

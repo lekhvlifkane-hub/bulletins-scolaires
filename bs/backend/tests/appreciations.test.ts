@@ -34,15 +34,15 @@ describe('Appréciations automatiques', () => {
     schoolId = school.id;
   });
 
-  it('crée les 30 règles par défaut et reste idempotent', async () => {
+  it('crée les 33 règles par défaut et reste idempotent', async () => {
     await ensureDefaultAppreciationRules(schoolId);
     await ensureDefaultAppreciationRules(schoolId);
 
-    expect(DEFAULT_APPRECIATION_RULES).toHaveLength(30);
-    expect(await prisma.appreciationRule.count({ where: { schoolId } })).toBe(30);
+    expect(DEFAULT_APPRECIATION_RULES).toHaveLength(33);
+    expect(await prisma.appreciationRule.count({ where: { schoolId } })).toBe(33);
     expect(
       await prisma.appreciationRule.count({ where: { schoolId, scope: 'MATIERE' } }),
-    ).toBe(8);
+    ).toBe(9);
     expect(
       await prisma.appreciationRule.count({ where: { schoolId, scope: 'DECISION' } }),
     ).toBe(6);
@@ -61,14 +61,14 @@ describe('Appréciations automatiques', () => {
       where: { schoolId_scope_code: { schoolId, scope: 'MENTION', code: 'MENTION_14_16' } },
     });
     expect(regle?.label).toBe('Honneur établissement');
-    expect(await prisma.appreciationRule.count({ where: { schoolId } })).toBe(30);
+    expect(await prisma.appreciationRule.count({ where: { schoolId } })).toBe(33);
   });
 
   it('applique les bons seuils aux mentions et décisions', async () => {
     const rules = await chargerReglesAppreciation(schoolId);
 
-    expect(mentionPour(rules.mention, '4.99')).toBe('Très faible');
-    expect(mentionPour(rules.mention, '5')).toBe('Faible');
+    expect(mentionPour(rules.mention, '4.99')).toBe('Très médiocre');
+    expect(mentionPour(rules.mention, '5')).toBe('Médiocre');
     expect(mentionPour(rules.mention, '9.99')).toBe('Insuffisant');
     expect(mentionPour(rules.mention, '10')).toBe('Passable');
     expect(mentionPour(rules.mention, '15.99')).toBe('Bien');
@@ -88,8 +88,8 @@ describe('Appréciations automatiques', () => {
 
   it('applique les bons seuils aux appréciations de matière', async () => {
     const rules = await chargerReglesAppreciation(schoolId);
-    expect(appreciationMatiere(rules.matiere, '4.99')).toBe('Très faible');
-    expect(appreciationMatiere(rules.matiere, '5')).toBe('Faible');
+    expect(appreciationMatiere(rules.matiere, '4.99')).toBe('Très médiocre');
+    expect(appreciationMatiere(rules.matiere, '5')).toBe('Médiocre');
     expect(appreciationMatiere(rules.matiere, '8')).toBe('Insuffisant');
     expect(appreciationMatiere(rules.matiere, '13')).toBe('Assez bien');
     expect(appreciationMatiere(rules.matiere, '18')).toBe('Excellent');
@@ -173,7 +173,7 @@ describe('Appréciations automatiques', () => {
     const { agent, csrf } = await loginAs('admin-appreciations@test.sn');
     const initial = await agent.get('/api/schooling/appreciation-rules');
     expect(initial.status).toBe(200);
-    expect(initial.body.rules).toHaveLength(30);
+    expect(initial.body.rules).toHaveLength(33);
 
     const rule = initial.body.rules.find(
       (item: { scope: string; code: string }) =>

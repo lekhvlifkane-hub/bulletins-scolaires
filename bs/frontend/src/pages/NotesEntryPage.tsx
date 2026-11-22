@@ -110,6 +110,19 @@ export function NotesEntryPage() {
       }))
     : [];
 
+  const groupesDisciplines = useMemo(() => {
+    const groupes = new Map<string, { label: string; items: Affectation[] }>();
+    for (const affectation of affectations) {
+      const parent = affectation.subject.parent;
+      const cle = parent?.id ?? affectation.subject.id;
+      const libelle = parent?.name ?? affectation.subject.name;
+      const groupe = groupes.get(cle) ?? { label: libelle, items: [] };
+      groupe.items.push(affectation);
+      groupes.set(cle, groupe);
+    }
+    return [...groupes.values()];
+  }, [affectations]);
+
   const nbModifiees = Object.keys(modifiees).length;
   const colonnesVerrouillees = feuille?.colonnes.filter((c) => !c.saisieAutorisee).length ?? 0;
   const colonnesNonValidees =
@@ -297,15 +310,58 @@ export function NotesEntryPage() {
               onChange={(event) => setAffectationId(event.target.value)}
             >
               {affectations.length === 0 ? <option value="">Aucune discipline affectée</option> : null}
-              {affectations.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.subject.name} (coef. {a.coefficient})
-                </option>
-              ))}
+              {groupesDisciplines.map((groupe) =>
+                groupe.items.length === 1 ? (
+                  <option key={groupe.items[0].id} value={groupe.items[0].id}>
+                    {groupe.items[0].subject.name} (coef. {groupe.items[0].coefficient})
+                  </option>
+                ) : (
+                  <optgroup key={groupe.label} label={groupe.label}>
+                    {groupe.items.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.subject.name} (coef. {a.coefficient})
+                      </option>
+                    ))}
+                  </optgroup>
+                )
+              )}
             </select>
           </label>
         </CardContent>
       </Card>
+
+      {groupesDisciplines.some((groupe) => groupe.items.length > 1) ? (
+        <details className="rounded-xl border border-border bg-card px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-medium text-foreground">
+            Groupes de matières (saisie identique : Devoir 1, Devoir 2, Composition)
+          </summary>
+          <div className="mt-3 space-y-3">
+            {groupesDisciplines
+              .filter((groupe) => groupe.items.length > 1)
+              .map((groupe) => (
+                <div key={groupe.label}>
+                  <p className="mb-2 font-semibold text-muted-foreground">{groupe.label}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {groupe.items.map((affectation) => (
+                      <button
+                        key={affectation.id}
+                        type="button"
+                        onClick={() => setAffectationId(affectation.id)}
+                        className={`rounded-full border px-3 py-1.5 text-xs ${
+                          affectation.id === affectationId
+                            ? 'border-primary bg-primary/10 font-semibold text-primary'
+                            : 'border-border bg-background text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {affectation.subject.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </details>
+      ) : null}
 
       <Card className="gap-0 border-border py-0 shadow-sm">
         <CardHeader className="pb-2">
@@ -350,6 +406,11 @@ export function NotesEntryPage() {
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card px-4 py-3">
             <div className="text-sm text-foreground">
               <p>
+                {feuille.classroomSubject.subject.parent ? (
+                  <span className="font-medium">
+                    {feuille.classroomSubject.subject.parent.name} ·{' '}
+                  </span>
+                ) : null}
                 <span className="font-medium">{feuille.classroomSubject.subject.name}</span> —{' '}
                 {feuille.classroomSubject.classroom.name} · {feuille.semester.name} · coef.{' '}
                 {feuille.classroomSubject.coefficient ?? '—'}
