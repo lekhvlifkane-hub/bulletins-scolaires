@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +50,7 @@ export function VerificationsPage() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const chargementRef = useRef(0);
 
   const peutValider = user?.role === 'SCHOOL_ADMIN' || user?.role === 'SURVEILLANT_GENERAL';
 
@@ -75,7 +76,9 @@ export function VerificationsPage() {
 
   const charger = async () => {
     if (!classroomId || !semesterId) return;
+    const requete = ++chargementRef.current;
     const reponse = await chargerEvaluations({ semesterId });
+    if (requete !== chargementRef.current) return;
     setEvaluations(
       reponse.assessments.filter((e) => e.classroomId === classroomId)
     );

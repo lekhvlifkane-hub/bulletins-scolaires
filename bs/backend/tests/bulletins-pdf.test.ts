@@ -261,6 +261,7 @@ describe('Phase 5 — PDF d’un bulletin', () => {
       enTete: {
         ...snapshot().enTete,
         modeleBulletin: 'OFFICIEL',
+        logoDataUrl: LOGO_PNG,
         couleurPrimaire: '#0B2D4F',
         couleurSecondaire: '#0B9B67',
         couleurAccent: '#E5B544',
@@ -276,6 +277,35 @@ describe('Phase 5 — PDF d’un bulletin', () => {
         qrBulletin: 'BULLETIN:enc-1:1',
         observationConseil: 'Bon travail.',
       },
+      matieres: [
+        matiere({
+          moyenneAffichee: '14.67',
+          groupes: [
+            groupe({
+              notes: [
+                note({ position: 1, score: '12' }),
+                note({ assessmentId: 'ev-d2', title: 'Devoir 2', position: 2, score: '13' }),
+              ],
+            }),
+            groupe({
+              category: 'COMPOSITION',
+              moyenne: '14',
+              moyenneAffichee: '14.67',
+              notes: [
+                note({
+                  assessmentId: 'ev-comp',
+                  title: 'Composition',
+                  typeName: 'Composition',
+                  category: 'COMPOSITION',
+                  position: 1,
+                  score: '15',
+                }),
+              ],
+            }),
+          ],
+        }),
+        snapshot().matieres[1],
+      ],
     });
     const resultat = await genererPdfBulletin({ snapshot: s, meta: meta() });
 
@@ -284,14 +314,34 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     const texte = texteDe(resultat.journal);
     expect(texte).toContain('République du Sénégal');
     expect(texte).toContain("Ministère de l'Education nationale");
+    expect(texte).toContain('[image]');
+    expect(texte).not.toContain('Logo du');
+    expect(texte).not.toContain('Logo de');
     expect(texte).toContain('BULLETIN DU PREMIER SEMESTRE');
     expect(texte).toContain('ANNEE SCOLAIRE : 2025-2026');
+    const logoX = ZONE.x;
+    const lignesEnTete = resultat.journal.emplacements.filter((e) =>
+      [
+        'République du Sénégal',
+        "Ministère de l'Education nationale",
+        'ANNEE SCOLAIRE : 2025-2026',
+      ].includes(e.texte)
+    );
+    expect(lignesEnTete).toHaveLength(3);
+    for (const ligne of lignesEnTete) {
+      expect(ligne.x).toBeGreaterThanOrEqual(logoX + 64 + 2);
+    }
     expect(texte).toContain('IEN');
     expect(texte).toContain('IEN-2026-001');
     expect(texte).toContain('Classe doublée (NEANT ou OUI)');
     expect(texte).toContain('Disciplines');
-    expect(texte).toContain('Devoirs');
-    expect(texte).toContain('Compos');
+    expect(texte).toContain('Dev 1');
+    expect(texte).toContain('Dev 2');
+    expect(texte).toContain('Composition');
+    expect(texte).toMatch(/(^|\n)12(\n|$)/);
+    expect(texte).toMatch(/(^|\n)13(\n|$)/);
+    expect(texte).toMatch(/(^|\n)15(\n|$)/);
+    expect(texte).not.toContain('[drapeau]');
     expect(texte).toContain('Moy×Coef');
     expect(texte).toContain('Rang');
     expect(texte).toContain('[ ] Travail excellent');
@@ -299,6 +349,27 @@ describe('Phase 5 — PDF d’un bulletin', () => {
     expect(texte).toContain('[QR:BULLETIN:enc-1:1]');
     expect(texte).toContain('Informations Élève');
     expect(texte).toContain('Ouvrir le bulletin');
+  });
+
+  it('affiche le logo de l’établissement en secours dans le modèle officiel', async () => {
+    const s = snapshot({
+      enTete: { ...snapshot().enTete, modeleBulletin: 'OFFICIEL' },
+      modeleOfficiel: {
+        titre: 'BULLETIN DU PREMIER SEMESTRE',
+        district: 'Thiès',
+        inspection: 'IEF Thiès',
+        casesS1: [],
+        casesS2: [],
+        qrInformations: 'INFO:ELEVE:ELV-1',
+        qrBulletin: 'BULLETIN:enc-1:1',
+      },
+    });
+    const resultat = await genererPdfBulletin({ snapshot: s, meta: meta() });
+
+    assertRenduSain(resultat.journal);
+    const texte = texteDe(resultat.journal);
+    expect(texte).toContain('Logo de');
+    expect(texte).toContain("l'établissement");
   });
 
   it('imprime le logo figé dans le snapshot', async () => {

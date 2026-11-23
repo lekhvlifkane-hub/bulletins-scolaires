@@ -95,6 +95,7 @@ function estReference(chemin: string): boolean {
 
 class ApiClient {
   private csrfToken: string | null = null;
+  private sessionEnCours: Promise<SessionResponse> | null = null;
 
   setCsrfToken(token: string | null) {
     this.csrfToken = token;
@@ -151,13 +152,22 @@ class ApiClient {
   }
 
   async getSession(): Promise<SessionResponse> {
-    const res = await this.fetch('/api/auth/session');
-    if (!res.ok) {
-      throw new Error('Impossible de charger la session');
+    if (!this.sessionEnCours) {
+      this.sessionEnCours = (async () => {
+        const res = await this.fetch('/api/auth/session');
+        if (!res.ok) {
+          throw new Error('Impossible de charger la session');
+        }
+        const data = (await res.json()) as SessionResponse;
+        this.csrfToken = data.csrfToken ?? this.csrfToken;
+        return data;
+      })();
     }
-    const data = (await res.json()) as SessionResponse;
-    this.csrfToken = data.csrfToken ?? this.csrfToken;
-    return data;
+    try {
+      return await this.sessionEnCours;
+    } finally {
+      this.sessionEnCours = null;
+    }
   }
 
   async login(email: string, password: string) {

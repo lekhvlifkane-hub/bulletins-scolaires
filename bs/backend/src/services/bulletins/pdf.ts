@@ -767,35 +767,20 @@ function dessinerImageDans(
   }
 }
 
-function dessinerDrapeau(plan: Plan, x: number, y: number): void {
-  const doc = plan.doc;
-  const largeur = 42;
-  const hauteur = 25;
-  const bande = largeur / 3;
-  const couleurs = ['#00853f', '#fdef42', '#e31b23'];
-  couleurs.forEach((couleur, index) => {
-    doc.rect(x + index * bande, y, bande, hauteur).fillAndStroke(couleur, COULEUR.trait);
-  });
-  const centreX = x + bande / 2;
-  const centreY = y + hauteur / 2;
-  const rayon = 4;
-  const interieur = 1.7;
-  doc.fillColor('#fdef42');
-  doc.moveTo(centreX, centreY - rayon);
-  for (let index = 1; index < 10; index += 1) {
-    const angle = -Math.PI / 2 + (index * Math.PI) / 5;
-    const r = index % 2 === 0 ? rayon : interieur;
-    doc.lineTo(centreX + Math.cos(angle) * r, centreY + Math.sin(angle) * r);
-  }
-  doc.closePath().fill();
-  doc.fillColor(COULEUR.encre);
-  signaler(plan, x, y, largeur, hauteur, '[drapeau]');
-}
-
-function dessinerLogoMinistere(plan: Plan, x: number, y: number): void {
+function dessinerLogoEtablissement(plan: Plan, x: number, y: number): void {
   const doc = plan.doc;
   doc.rect(x, y, 64, 30).lineWidth(0.6).strokeColor(COULEUR.trait).stroke();
-  tracer(plan, ['Logo du', 'Ministère'], x + 2, 60, y + 8, 'centre', 'normal', TAILLE.petit, COULEUR.doux);
+  tracer(
+    plan,
+    ['Logo de', "l'établissement"],
+    x + 2,
+    60,
+    y + 8,
+    'centre',
+    'normal',
+    TAILLE.petit,
+    COULEUR.doux
+  );
   doc.strokeColor(COULEUR.encre);
 }
 
@@ -814,17 +799,6 @@ function dessinerQr(plan: Plan, contenu: string, x: number, y: number, largeur: 
   }
   plan.doc.restore();
   signaler(plan, x, y, largeur, largeur, `[QR:${contenu}]`);
-}
-
-function moyenneGroupe(matiere: Matiere, categorie: 'DEVOIR' | 'COMPOSITION'): string {
-  const groupe = matiere.groupes.find(
-    (item) => item.category === categorie && item.moyenneAffichee !== null
-  );
-  if (groupe) return groupe.moyenneAffichee ?? '—';
-  const incomplet = matiere.groupes.find((item) => item.category === categorie);
-  if (incomplet?.notes.some((note) => note.status === 'ABSENT')) return 'ABS';
-  if (incomplet?.notes.some((note) => note.status === 'ANNULEE')) return 'ANN';
-  return '—';
 }
 
 function rangMatiere(matiere: Matiere): string {
@@ -854,6 +828,7 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
         { texte: '' },
         { texte: '' },
         { texte: '' },
+        { texte: '' },
       ]);
       parentAffiche = parent;
     }
@@ -861,8 +836,9 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
     if (groupeSansNotePropre) continue;
     lignes.push([
       { texte: parent ? `    ${matiere.subjectName}` : matiere.subjectName },
-      { texte: deuxDecimales(moyenneGroupe(matiere, 'DEVOIR')), aligne: 'droite' },
-      { texte: deuxDecimales(moyenneGroupe(matiere, 'COMPOSITION')), aligne: 'droite' },
+      { texte: celluleNote(matiere, 'DEVOIR', 1), aligne: 'centre' },
+      { texte: celluleNote(matiere, 'DEVOIR', 2), aligne: 'centre' },
+      { texte: celluleNote(matiere, 'COMPOSITION', 1), aligne: 'centre' },
       { texte: deuxDecimales(affiche(matiere.moyenneAffichee)), aligne: 'droite', style: 'gras' },
       { texte: matiere.coefficient ?? '—', aligne: 'centre' },
       { texte: deuxDecimales(matiere.pointsPonderes), aligne: 'droite' },
@@ -873,6 +849,7 @@ function lignesMatieresOfficielles(s: SnapshotBulletin): Cellule[][] {
 
   lignes.push([
     { texte: 'TOTAUX', style: 'gras' },
+    { texte: '' },
     { texte: '' },
     { texte: '' },
     { texte: '' },
@@ -925,21 +902,18 @@ function dessinerBulletinOfficielHistorique(
   const secondaire = configCouleur(s.enTete.couleurSecondaire, COULEUR.encre);
   const accent = configCouleur(s.enTete.couleurAccent, COULEUR.fondFort);
 
-  const drapeauX = ZONE.x;
-  const drapeauY = plan.y;
-  if (!dessinerImageDans(plan, s.enTete.drapeauDataUrl, drapeauX, drapeauY, 42, 25)) {
-    dessinerDrapeau(plan, drapeauX, drapeauY);
-  }
-  const ministereX = ZONE.x + ZONE.largeur - 64;
-  if (!dessinerImageDans(plan, s.enTete.logoMinistereDataUrl, ministereX, drapeauY, 64, 30)) {
-    dessinerLogoMinistere(plan, ministereX, drapeauY);
+  const enTeteX = ZONE.x;
+  const enTeteY = plan.y;
+  const logoX = ZONE.x;
+  if (!dessinerImageDans(plan, s.enTete.logoDataUrl, logoX, enTeteY, 64, 30)) {
+    dessinerLogoEtablissement(plan, logoX, enTeteY);
   }
   tracer(
     plan,
     ['République du Sénégal'],
-    drapeauX + 48,
+    enTeteX + 72,
     150,
-    drapeauY + 3,
+    enTeteY + 3,
     'gauche',
     'gras',
     TAILLE.petit
@@ -947,9 +921,9 @@ function dessinerBulletinOfficielHistorique(
   tracer(
     plan,
     ["Ministère de l'Éducation nationale"],
-    ministereX - 192,
+    ZONE.x + ZONE.largeur - 256,
     188,
-    drapeauY + 3,
+    enTeteY + 3,
     'droite',
     'gras',
     TAILLE.petit
@@ -961,14 +935,6 @@ function dessinerBulletinOfficielHistorique(
     taille: 8.5,
     apres: 1,
   });
-  dessinerImageDans(
-    plan,
-    s.enTete.logoDataUrl,
-    ZONE.x + (ZONE.largeur - 90) / 2,
-    plan.y,
-    90,
-    22
-  );
   ecrire(plan, (s.enTete.nomOfficiel ?? s.enTete.nomEtablissement).toUpperCase(), {
     aligne: 'centre',
     style: 'gras',
@@ -1047,13 +1013,14 @@ function dessinerBulletinOfficielHistorique(
     plan,
     'Disciplines',
     [
-      { titre: 'Disciplines', largeur: 132 },
-      { titre: 'Devoirs', largeur: 44, aligne: 'centre' },
-      { titre: 'Compos', largeur: 44, aligne: 'centre' },
+      { titre: 'Disciplines', largeur: 104 },
+      { titre: 'Dev 1', largeur: 34, aligne: 'centre' },
+      { titre: 'Dev 2', largeur: 34, aligne: 'centre' },
+      { titre: 'Composition', largeur: 56, aligne: 'centre' },
       { titre: 'Moy', largeur: 40, aligne: 'centre' },
       { titre: 'Coeff', largeur: 32, aligne: 'centre' },
-      { titre: 'Moy×Coef', largeur: 48, aligne: 'centre' },
-      { titre: 'Rang', largeur: 38, aligne: 'centre' },
+      { titre: 'Moy×Coef', largeur: 46, aligne: 'centre' },
+      { titre: 'Rang', largeur: 32, aligne: 'centre' },
       { titre: 'Appréciations', largeur: ZONE.largeur - 378 },
     ],
     lignesMatieresOfficielles(s),
@@ -1567,15 +1534,12 @@ function dessinerBulletinOfficiel(
   const doc = plan.doc;
   const haut = plan.y;
 
-  if (!dessinerImageDans(plan, s.enTete.drapeauDataUrl, ZONE.x, haut, 42, 25)) {
-    dessinerDrapeau(plan, ZONE.x, haut);
+  const logoX = ZONE.x;
+  if (!dessinerImageDans(plan, s.enTete.logoDataUrl, logoX, haut, 64, 30)) {
+    dessinerLogoEtablissement(plan, logoX, haut);
   }
-  const ministereX = ZONE.x + ZONE.largeur - 64;
-  if (!dessinerImageDans(plan, s.enTete.logoMinistereDataUrl, ministereX, haut, 64, 30)) {
-    dessinerLogoMinistere(plan, ministereX, haut);
-  }
-  const centreX = ZONE.x + 50;
-  const centreLargeur = ZONE.largeur - 100;
+  const centreX = ZONE.x + 72;
+  const centreLargeur = ZONE.largeur - 108;
   tracer(plan, ['République du Sénégal'], centreX, centreLargeur, haut + 1, 'centre', 'gras', 8.5);
   tracer(
     plan,
@@ -1656,13 +1620,14 @@ function dessinerBulletinOfficiel(
     plan,
     'Disciplines',
     [
-      { titre: 'Disciplines', largeur: 132 },
-      { titre: 'Devoirs', largeur: 44, aligne: 'droite' },
-      { titre: 'Compos', largeur: 44, aligne: 'droite' },
+      { titre: 'Disciplines', largeur: 104 },
+      { titre: 'Dev 1', largeur: 34, aligne: 'centre' },
+      { titre: 'Dev 2', largeur: 34, aligne: 'centre' },
+      { titre: 'Composition', largeur: 56, aligne: 'centre' },
       { titre: 'Moy', largeur: 40, aligne: 'droite' },
       { titre: 'Coeff', largeur: 32, aligne: 'centre' },
-      { titre: 'Moy×Coef', largeur: 48, aligne: 'droite' },
-      { titre: 'Rang', largeur: 38, aligne: 'centre' },
+      { titre: 'Moy×Coef', largeur: 46, aligne: 'droite' },
+      { titre: 'Rang', largeur: 32, aligne: 'centre' },
       { titre: 'Appréciations', largeur: ZONE.largeur - 378 },
     ],
     lignesMatieresOfficielles(s),

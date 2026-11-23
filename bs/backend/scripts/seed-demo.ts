@@ -17,10 +17,27 @@ import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/db/prisma';
 import { hashPassword } from '../src/lib/password';
+import { genererBulletinsClasse, publierBulletins } from '../src/services/bulletins/bulletin';
+import { appliquerModelesALaClasse } from '../src/services/subjects/templates';
 
 const NOM_ETABLISSEMENT = 'Lycée FICTIF — Démonstration (ne pas utiliser)';
 const NOM_CLASSE = 'TS 1 — FICTIF';
 const MOT_DE_PASSE_DEMO = process.env.SEED_PASSWORD ?? `${randomBytes(18).toString('base64url')}aA1!`;
+
+const NOM_ETABLISSEMENT_6E_3E = 'Collège FICTIF 6e-3e — Test bulletins';
+const MOT_DE_PASSE_6E_3E = 'DemoFictif2026!';
+const NIVEAUX_BULLETINS = [
+  { nom: '6e', classe: '6e A FICTIF', prefixe: 'FIC6', naissance: '2013-05-02' },
+  { nom: '5e', classe: '5e A FICTIF', prefixe: 'FIC5', naissance: '2012-05-02' },
+  { nom: '4e', classe: '4e A FICTIF', prefixe: 'FIC4', naissance: '2011-05-02' },
+  { nom: '3e', classe: '3e A FICTIF', prefixe: 'FIC3', naissance: '2010-05-02' },
+] as const;
+const ELEVES_BULLETINS = [
+  { nom: 'Ndiaye', prenoms: 'Awa', sexe: 'F' },
+  { nom: 'Sow', prenoms: 'Ibrahima', sexe: 'M' },
+  { nom: 'Diagne', prenoms: 'Fatou', sexe: 'F' },
+  { nom: 'Mbaye', prenoms: 'Ousmane', sexe: 'M' },
+] as const;
 
 type Note = number | 'ABSENT' | 'ANNULEE' | null;
 
@@ -84,6 +101,10 @@ const ELEVES: ElveDemo[] = [
     notes: [[14, 15, null, null], [13, 12, null, null], [15, 14, null, null], [16, 15, null, null], [12, 13, null, null], [14, 13, null, null]],
   },
 ];
+
+function noteFictive(niveau: number, matiere: number, eleve: number, evaluation: number): number {
+  return 10 + ((niveau * 11 + matiere * 7 + eleve * 5 + evaluation * 3) % 9);
+}
 
 function verifierCibleLocale() {
   if (process.env.NODE_ENV === 'production') {
@@ -290,7 +311,222 @@ async function main() {
   }, { maxWait: 10_000, timeout: 60_000 });
 }
 
+async function mainBulletins6e3e() {
+  verifierCibleLocale();
+  const existante = await prisma.school.findFirst({ where: { name: NOM_ETABLISSEMENT_6E_3E } });
+  if (existante) {
+    const nbClasses = await prisma.classroom.count({
+      where: { schoolId: existante.id, name: { in: NIVEAUX_BULLETINS.map((niveau) => niveau.classe) } },
+    });
+    const nbEleves = await prisma.student.count({ where: { schoolId: existante.id, deletedAt: null } });
+    const nbBulletins = await prisma.reportCard.count({ where: { schoolId: existante.id } });
+    const nbAttendu = NIVEAUX_BULLETINS.length * ELEVES_BULLETINS.length * 2;
+    if (
+      nbClasses === NIVEAUX_BULLETINS.length &&
+      nbEleves === NIVEAUX_BULLETINS.length * ELEVES_BULLETINS.length &&
+      nbBulletins === nbAttendu
+    ) {
+      console.log(`Le jeu FICTIF 6e-3e existe déjà : ${nbClasses} classes, ${nbEleves} élèves, ${nbBulletins} bulletins.`);
+      console.log(`Connexion : admin.test@demo.local / ${MOT_DE_PASSE_6E_3E}`);
+      return;
+    }
+    throw new Error('Le jeu FICTIF 6e-3e existe mais est incomplet. Aucune donnée n’a été modifiée ; nettoyez cet établissement avant de relancer le seed.');
+  }
+
+  const contexte = await prisma.$transaction(async (tx) => {
+    const motDePasse = await hashPassword(MOT_DE_PASSE_6E_3E);
+    const school = await tx.school.create({
+      data: {
+        name: NOM_ETABLISSEMENT_6E_3E,
+        officialName: 'COLLEGE FICTIF 6E-3E — DONNEES DE TEST',
+        iefName: 'IEF DE DAKAR (FICTIF)',
+        city: 'Dakar (FICTIF)',
+        address: 'Quartier Fictif, Dakar',
+        phone: '+221 33 000 00 01',
+        email: 'contact6e3e@demo.local',
+        modeleBulletin: 'OFFICIEL',
+      },
+    });
+    const admin = await tx.user.create({
+      data: {
+        schoolId: school.id,
+        email: 'admin.test@demo.local',
+        name: 'Administration FICTIF 6e-3e',
+        role: 'SCHOOL_ADMIN',
+        passwordHash: motDePasse,
+      },
+    });
+    await tx.user.create({
+      data: {
+        schoolId: school.id,
+        email: 'surveillant.test@demo.local',
+        name: 'Surveillance FICTIF 6e-3e',
+        role: 'SURVEILLANT_GENERAL',
+        passwordHash: motDePasse,
+      },
+    });
+    const annee = await tx.academicYear.create({
+      data: {
+        schoolId: school.id,
+        name: '2025-2026',
+        startsAt: new Date('2025-10-01'),
+        endsAt: new Date('2026-07-31'),
+        status: 'ACTIVE',
+        semesters: {
+          create: [
+            { number: 1, name: 'Semestre 1', startsAt: new Date('2025-10-01'), endsAt: new Date('2026-02-28') },
+            { number: 2, name: 'Semestre 2', startsAt: new Date('2026-03-01'), endsAt: new Date('2026-07-31') },
+          ],
+        },
+      },
+      include: { semesters: { orderBy: { number: 'asc' } } },
+    });
+    const niveaux = new Map<string, string>();
+    for (const [index, niveau] of NIVEAUX_BULLETINS.entries()) {
+      const cree = await tx.level.create({
+        data: { schoolId: school.id, name: niveau.nom, sortOrder: index + 1 },
+      });
+      niveaux.set(niveau.nom, cree.id);
+    }
+    const classes: { id: string; nom: string; classe: string; prefixe: string; naissance: string }[] = [];
+    for (const niveau of NIVEAUX_BULLETINS) {
+      const cree = await tx.classroom.create({
+        data: {
+          schoolId: school.id,
+          academicYearId: annee.id,
+          levelId: niveaux.get(niveau.nom)!,
+          name: niveau.classe,
+        },
+      });
+      classes.push({ id: cree.id, nom: niveau.nom, classe: niveau.classe, prefixe: niveau.prefixe, naissance: niveau.naissance });
+    }
+    const devoir = await tx.assessmentType.create({
+      data: { schoolId: school.id, code: 'DEV', name: 'Devoir surveillé', category: 'DEVOIR' },
+    });
+    const composition = await tx.assessmentType.create({
+      data: { schoolId: school.id, code: 'COMP', name: 'Composition', category: 'COMPOSITION' },
+    });
+    const inscriptions = new Map<string, string[]>();
+    for (const classe of classes) {
+      const ids: string[] = [];
+      for (const [index, eleve] of ELEVES_BULLETINS.entries()) {
+        const matricule = `${classe.prefixe}-${String(index + 1).padStart(3, '0')}`;
+        const student = await tx.student.create({
+          data: {
+            schoolId: school.id,
+            matricule,
+            lastName: `${eleve.nom} (FICTIF)`,
+            firstNames: eleve.prenoms,
+            birthDate: new Date(classe.naissance),
+            birthPlace: 'Dakar (FICTIF)',
+            sex: eleve.sexe,
+            ien: `IEN-${matricule}`,
+          },
+        });
+        const inscription = await tx.enrollment.create({
+          data: { schoolId: school.id, studentId: student.id, classroomId: classe.id, status: 'ACTIVE' },
+        });
+        ids.push(inscription.id);
+      }
+      inscriptions.set(classe.id, ids);
+    }
+    return {
+      school,
+      semestres: annee.semesters,
+      classes,
+      inscriptions,
+      adminId: admin.id,
+      devoirId: devoir.id,
+      compositionId: composition.id,
+    };
+  }, { maxWait: 10_000, timeout: 120_000 });
+
+  for (const [niveauIndex, classe] of contexte.classes.entries()) {
+    await appliquerModelesALaClasse({ schoolId: contexte.school.id, classroomId: classe.id });
+    const liens = await prisma.classroomSubject.findMany({
+      where: { schoolId: contexte.school.id, classroomId: classe.id, isActive: true },
+      include: { subject: true },
+      orderBy: [{ sortOrder: 'asc' }, { subject: { name: 'asc' } }],
+    });
+    const inscriptions = contexte.inscriptions.get(classe.id) ?? [];
+    for (const [matiereIndex, lien] of liens.entries()) {
+      for (const [semestreIndex, semestre] of contexte.semestres.entries()) {
+        const evaluations = [
+          { titre: 'Devoir 1', typeId: contexte.devoirId, position: 1, rang: semestreIndex * 3 },
+          { titre: 'Devoir 2', typeId: contexte.devoirId, position: 2, rang: semestreIndex * 3 + 1 },
+          { titre: 'Composition', typeId: contexte.compositionId, position: 1, rang: semestreIndex * 3 + 2 },
+        ];
+        for (const evaluation of evaluations) {
+          const assessment = await prisma.assessment.create({
+            data: {
+              schoolId: contexte.school.id,
+              classroomSubjectId: lien.id,
+              semesterId: semestre.id,
+              typeId: evaluation.typeId,
+              title: `${evaluation.titre} ${lien.subject.name} S${semestre.number} (FICTIF)`,
+              position: evaluation.position,
+              outOf: new Prisma.Decimal('20'),
+              status: 'VALIDEE',
+              validatedAt: new Date(),
+            },
+          });
+          await prisma.grade.createMany({
+            data: inscriptions.map((enrollmentId, eleveIndex) => ({
+              schoolId: contexte.school.id,
+              assessmentId: assessment.id,
+              enrollmentId,
+              score: new Prisma.Decimal(String(noteFictive(niveauIndex, matiereIndex, eleveIndex, evaluation.rang))),
+              status: 'SAISIE' as const,
+              observation: 'Note fictive de test',
+            })),
+          });
+        }
+      }
+    }
+  }
+
+  for (const semestre of contexte.semestres) {
+    for (const classe of contexte.classes) {
+      const generation = await genererBulletinsClasse({
+        schoolId: contexte.school.id,
+        classroomId: classe.id,
+        semesterId: semestre.id,
+        userId: contexte.adminId,
+      });
+      const bulletins = await prisma.reportCard.findMany({
+        where: {
+          schoolId: contexte.school.id,
+          semesterId: semestre.id,
+          enrollment: { classroomId: classe.id },
+          statut: { not: 'PUBLIE' },
+        },
+        select: { id: true },
+      });
+      const publication = bulletins.length > 0
+        ? await publierBulletins({
+            schoolId: contexte.school.id,
+            ids: bulletins.map((bulletin) => bulletin.id),
+            userId: contexte.adminId,
+          })
+        : { publies: 0, dejaPublies: 0 };
+      console.log(`${classe.classe} S${semestre.number} : ${generation.generes} bulletin(s) créé(s), ${publication.publies} publié(s), ${generation.ignores.length} ignoré(s).`);
+    }
+  }
+
+  const nbEvaluations = await prisma.assessment.count({ where: { schoolId: contexte.school.id } });
+  const nbNotes = await prisma.grade.count({ where: { schoolId: contexte.school.id } });
+  const nbBulletins = await prisma.reportCard.count({ where: { schoolId: contexte.school.id } });
+  console.log('Jeu FICTIF 6e-3e créé.');
+  console.log(`Établissement : ${contexte.school.name}`);
+  console.log(`Classes       : ${contexte.classes.map((classe) => classe.classe).join(' · ')}`);
+  console.log(`Effectif      : ${NIVEAUX_BULLETINS.length * ELEVES_BULLETINS.length} élèves · ${nbEvaluations} évaluations · ${nbNotes} notes · ${nbBulletins} bulletins`);
+  console.log('Connexion :');
+  console.log(`  admin.test@demo.local / ${MOT_DE_PASSE_6E_3E}  [SCHOOL_ADMIN]`);
+  console.log(`  surveillant.test@demo.local / ${MOT_DE_PASSE_6E_3E}  [SURVEILLANT_GENERAL]`);
+}
+
 main()
+  .then(() => mainBulletins6e3e())
   .catch((error) => {
     console.error(error);
     process.exit(1);

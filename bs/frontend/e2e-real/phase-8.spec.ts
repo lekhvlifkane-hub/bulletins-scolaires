@@ -48,9 +48,18 @@ async function postJson(
 }
 
 async function createSchool(page: Page, name: string) {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
   await page.goto('/#/etablissements');
   await page.getByPlaceholder("Nom de l'établissement").fill(name);
   await page.getByPlaceholder('Ville').fill('Dakar');
+  await page.getByPlaceholder('Nom admin').fill('Administrateur E2E FICTIF');
+  await page.getByPlaceholder('Email admin').fill(`admin-${slug}@e2e.local`);
+  await page.getByPlaceholder('Mot de passe admin').fill('E2E-Only-Password-2026!');
   await page.getByRole('button', { name: 'Créer', exact: true }).click();
   await expect(page.getByRole('cell', { name, exact: true })).toBeVisible();
 }
@@ -85,7 +94,7 @@ async function createUser(
   role: 'SCHOOL_ADMIN' | 'ASSISTANT',
 ) {
   await page.goto('/#/utilisateurs');
-  await page.getByLabel('Établissement').selectOption({ label: schoolName });
+  await page.locator('#school-filter').selectOption({ label: schoolName });
   await page.getByPlaceholder('Nom complet').fill(name);
   await page.getByPlaceholder('E-mail').fill(email);
   await page.locator('form select').selectOption(role);
@@ -155,11 +164,12 @@ test('parcours réel complet : établissement, notes, bulletins, bilan, PDF et i
   const semesters = year.semesters.sort((left, right) => left.number - right.number);
   expect(semesters).toHaveLength(2);
 
-  const levelResponse = await postJson(request, origin, '/api/schooling/levels', {
-    name: '6e',
-    sortOrder: 1,
-  });
-  const levelId = (levelResponse.level as { id: string }).id;
+  const levelsResponse = await request.get(`${origin}/api/schooling/levels`);
+  expect(levelsResponse.ok()).toBeTruthy();
+  const { levels } = await levelsResponse.json() as { levels: { id: string; name: string }[] };
+  const niveauSixieme = levels.find((item) => item.name === '6e');
+  if (!niveauSixieme) throw new Error('Le niveau 6e doit exister par défaut.');
+  const levelId = niveauSixieme.id;
   const classResponse = await postJson(request, origin, '/api/schooling/classes', {
     name: '6e A E2E',
     academicYearId: year.id,
@@ -186,9 +196,10 @@ test('parcours réel complet : établissement, notes, bulletins, bilan, PDF et i
   const assessmentTypeId = (typeResponse.type as { id: string }).id;
 
   await page.getByRole('link', { name: 'Élèves', exact: true }).click();
-  await page.getByPlaceholder('Matricule').fill('E2E-001');
-  await page.getByPlaceholder('Nom', { exact: true }).fill('Ndiaye');
-  await page.getByPlaceholder('Prénoms').fill('Awa');
+  await page.getByLabel('Matricule facultatif').fill('E2E-001');
+  await page.getByLabel('Nom', { exact: true }).fill('Ndiaye');
+  await page.getByLabel('Prénoms').fill('Awa');
+  await page.getByLabel('Date de naissance').fill('2013-05-02');
   await page.getByRole('button', { name: 'Créer', exact: true }).click();
   await expect(page.getByRole('cell', { name: 'E2E-001' })).toBeVisible();
   const studentsResponse = await request.get(`${origin}/api/students?search=E2E-001`);
@@ -213,7 +224,7 @@ test('parcours réel complet : établissement, notes, bulletins, bilan, PDF et i
     await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
     await expect(page.getByText(/note.*enregistrée|enregistrée.*note/i)).toBeVisible();
 
-    await page.getByRole('link', { name: 'Vérifications', exact: true }).click();
+    await page.getByRole('link', { name: 'Contrôles avant bulletins', exact: true }).click();
     await page.getByLabel('Semestre').selectOption(semester.id);
     const row = page.getByRole('row').filter({ hasText: title });
     await expect(row).toBeVisible();
@@ -223,8 +234,8 @@ test('parcours réel complet : établissement, notes, bulletins, bilan, PDF et i
     await expect(row.getByText('Publiée')).toBeVisible();
   }
 
-  await page.getByRole('link', { name: 'Calcul et classement', exact: true }).click();
-  await expect(page.getByText('Moyenne générale')).toBeVisible();
+  await page.getByRole('link', { name: 'Moyennes et rangs', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: 'Moyenne générale' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'E2E-001' })).toBeVisible();
 
   for (const semester of semesters) {
