@@ -170,16 +170,25 @@ class ApiClient {
     }
   }
 
-  async login(email: string, password: string) {
-    // Sans jeton CSRF (ex. juste après une déconnexion), on en obtient un
-    // auprès du serveur : sinon le middleware CSRF rejette la requête.
-    if (!this.csrfToken) {
-      await this.getSession().catch(() => undefined);
-    }
-    const res = await this.fetch('/api/auth/login', {
+  private envoyerLogin(email: string, password: string) {
+    return this.fetch('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+  }
+
+  async login(email: string, password: string) {
+    await this.getSession().catch(() => undefined);
+    let res = await this.envoyerLogin(email, password);
+
+    if (res.status === 403) {
+      const body = await res.clone().json().catch(() => null);
+      if (body?.error === 'Jeton CSRF invalide ou expiré') {
+        await this.getSession().catch(() => undefined);
+        res = await this.envoyerLogin(email, password);
+      }
+    }
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: 'Erreur de connexion' }));
       throw new Error(body.error || 'Erreur de connexion');
